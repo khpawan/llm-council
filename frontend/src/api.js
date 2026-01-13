@@ -112,4 +112,43 @@ export const api = {
       }
     }
   },
+
+  /**
+   * Export a conversation as PDF.
+   * @param {string} conversationId - The conversation ID
+   * @returns {Promise<void>}
+   */
+  async exportConversation(conversationId) {
+    const response = await fetch(
+      `${API_BASE}/api/conversations/${conversationId}/export`
+    );
+    if (!response.ok) {
+      throw new Error('Failed to export conversation');
+    }
+
+    // Get the PDF blob
+    const blob = await response.blob();
+
+    // Extract filename from Content-Disposition header if available
+    const contentDisposition = response.headers.get('Content-Disposition');
+    let filename = 'conversation.pdf';
+    if (contentDisposition) {
+      const matches = /filename="([^"]+)"/.exec(contentDisposition);
+      if (matches && matches[1]) {
+        filename = matches[1];
+      }
+    }
+
+    // Trigger browser download
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+
+    // Cleanup
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  },
 };

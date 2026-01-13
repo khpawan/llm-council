@@ -2,7 +2,7 @@
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response
 from pydantic import BaseModel
 from typing import List, Dict, Any
 import uuid
@@ -77,6 +77,42 @@ async def get_conversation(conversation_id: str):
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
     return conversation
+
+
+@app.get("/api/conversations/{conversation_id}/export")
+async def export_conversation_pdf(conversation_id: str):
+    """
+    Export a conversation as a PDF file.
+
+    Returns:
+        PDF file as streaming download
+    """
+    from .pdf_export import generate_conversation_pdf
+
+    # Check if conversation exists
+    conversation = storage.get_conversation(conversation_id)
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    try:
+        # Generate PDF bytes
+        pdf_bytes = await generate_conversation_pdf(conversation_id)
+
+        # Create safe filename from title
+        title = conversation.get('title', 'conversation')
+        safe_title = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_')).strip()
+        filename = f"{safe_title[:50]}.pdf"
+
+        # Return as downloadable file
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"'
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate PDF: {str(e)}")
 
 
 @app.post("/api/conversations/{conversation_id}/message")

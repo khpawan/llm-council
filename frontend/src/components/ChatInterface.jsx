@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import Stage1 from './Stage1';
 import Stage2 from './Stage2';
 import Stage3 from './Stage3';
+import { api } from '../api';
 import './ChatInterface.css';
 
 export default function ChatInterface({
@@ -11,6 +12,7 @@ export default function ChatInterface({
   isLoading,
 }) {
   const [input, setInput] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -37,6 +39,18 @@ export default function ChatInterface({
     }
   };
 
+  const handleExport = async () => {
+    setIsExporting(true);
+    try {
+      await api.exportConversation(conversation.id);
+    } catch (error) {
+      console.error('Failed to export:', error);
+      alert('Failed to generate PDF. Please try again.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   if (!conversation) {
     return (
       <div className="chat-interface">
@@ -50,6 +64,18 @@ export default function ChatInterface({
 
   return (
     <div className="chat-interface">
+      {conversation.messages.length > 0 && (
+        <div className="chat-header">
+          <h2>{conversation.title}</h2>
+          <button
+            className="export-button"
+            onClick={handleExport}
+            disabled={isExporting}
+          >
+            {isExporting ? 'Generating PDF...' : 'Export PDF'}
+          </button>
+        </div>
+      )}
       <div className="messages-container">
         {conversation.messages.length === 0 ? (
           <div className="empty-state">
