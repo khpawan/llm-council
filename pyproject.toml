@@ -13,3 +13,6 @@ dependencies = [
     "weasyprint>=61.0",
     "markdown>=3.5.0",
 ]
+
+[tool.setuptools]
+packages = ["backend"]
