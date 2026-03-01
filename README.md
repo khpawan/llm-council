@@ -200,6 +200,27 @@ uv run llm-council-cli --prompt "Sanity check this council setup" --print-final
    - Stage 2 rankings are present
    - Stage 3 model equals your chairman deployment
 
+
+### Recommended algorithm defaults
+
+Use this routing policy for day-to-day work:
+
+- **Draft ideation / fast loops:** `chairman_only`
+  - Fastest turnaround, good for early shaping.
+- **Mid-stage quality pass:** `consensus_only`
+  - Multi-model signal with lower latency/cost.
+- **Pre-publish or high-stakes review:** `peer_review`
+  - Full Stage1 + Stage2 + Stage3 quality process.
+
+Suggested progression for writing workflows:
+1. Run `chairman_only` for first iterations.
+2. Run `consensus_only` once structure is stable.
+3. Run `peer_review` before finalization.
+
+Ranking method recommendation:
+- Start with `RANK_AGGREGATION_METHOD=average_rank` (easiest to interpret)
+- Use `borda` when reviewer rankings are noisy and you want stronger consensus signal.
+
 ### Throughput and cost guidance
 
 - Start with `COUNCIL_MODELS=3` members and `peer_review`.
