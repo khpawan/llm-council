@@ -135,3 +135,82 @@ uv run llm-council-cli \
   --algorithm peer_review \
   --output /Users/pawan/Documents/development/pawan-knowledge/knowledge/ai-agents/council-review-agent-identity.md
 ```
+
+
+## Azure Foundry model recommendations + deployment steps
+
+If you want high-quality council outputs, use a **mixed panel** and keep your strongest model as chairman.
+
+### Recommended deployment pattern
+
+- **Chairman (best reasoning):** your strongest Foundry chat model deployment
+- **Council member #1 (strong general):** same strong model or next-best model
+- **Council member #2 (cost/speed balance):** a smaller/faster model
+- **Council member #3 (diversity):** a different model family if available
+
+A practical starter mix:
+- `foundry-chair` → strongest reasoning model available in your Foundry tenant
+- `foundry-1` → same as chairman (or second strongest)
+- `foundry-2` → strong balanced model (mid-tier)
+- `foundry-3` → fast model for diversity/latency
+
+> Tip: Do not run all members on the exact same deployment. Diversity improves council value.
+
+### Step-by-step: deploy models in Azure Foundry
+
+1. Open **Azure AI Foundry** for your project/resource.
+2. Go to **Models** (or **Model catalog**), select each model you want.
+3. Click **Deploy** and create deployments with clear names, for example:
+   - `foundry-chair`
+   - `foundry-1`
+   - `foundry-2`
+   - `foundry-3`
+4. Ensure deployments are for **chat completions** and are in a region/quota that can handle parallel calls.
+5. Copy your endpoint + key from the resource:
+   - `AZURE_FOUNDRY_ENDPOINT` (example: `https://<resource>.openai.azure.com`)
+   - `AZURE_FOUNDRY_API_KEY`
+6. Add these to your `.env` in this repo:
+
+```bash
+LLM_PROVIDER=azure_foundry
+AZURE_FOUNDRY_ENDPOINT=https://<your-resource>.openai.azure.com
+AZURE_FOUNDRY_API_KEY=<your-key>
+AZURE_FOUNDRY_API_VERSION=2024-10-21
+
+COUNCIL_MODELS=foundry-1,foundry-2,foundry-3
+CHAIRMAN_MODEL=foundry-chair
+AZURE_FOUNDRY_DEPLOYMENT_MAP={"foundry-1":"foundry-1","foundry-2":"foundry-2","foundry-3":"foundry-3","foundry-chair":"foundry-chair"}
+
+COUNCIL_ALGORITHM=peer_review
+RANK_AGGREGATION_METHOD=average_rank
+```
+
+7. Start app and test:
+
+```bash
+# backend + frontend
+./start.sh
+
+# or one-shot CLI test
+uv run llm-council-cli --prompt "Sanity check this council setup" --print-final
+```
+
+8. Verify panel behavior:
+   - Stage 1 contains responses from all 3 council members
+   - Stage 2 rankings are present
+   - Stage 3 model equals your chairman deployment
+
+### Throughput and cost guidance
+
+- Start with `COUNCIL_MODELS=3` members and `peer_review`.
+- If latency/cost is high, switch to:
+  - `COUNCIL_ALGORITHM=consensus_only` (skips Stage 2)
+  - or use a faster model for one council seat.
+- Use `chairman_only` for quick drafts, then `peer_review` for final quality passes.
+
+### Example: run blog draft through council and write markdown
+
+```bash
+uv run llm-council-cli   --input-file /Users/pawan/Documents/development/pawan-knowledge/blog/drafts/2026-02-agent-identity-crisis-x-article.md   --algorithm peer_review   --output /Users/pawan/Documents/development/pawan-knowledge/knowledge/ai-agents/council-review-agent-identity.md   --print-final
+```
+
