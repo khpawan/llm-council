@@ -57,6 +57,35 @@ COUNCIL_MODELS = [
 CHAIRMAN_MODEL = "google/gemini-3-pro-preview"
 ```
 
+
+### 4. Provider Configuration (OpenRouter or Azure Foundry)
+
+By default the app uses OpenRouter. To use Azure Foundry/Azure OpenAI-compatible chat completions, set:
+
+```bash
+LLM_PROVIDER=azure_foundry
+AZURE_FOUNDRY_ENDPOINT=https://<your-resource>.openai.azure.com
+AZURE_FOUNDRY_API_KEY=<key>
+AZURE_FOUNDRY_API_VERSION=2024-10-21
+
+# Use deployment names in COUNCIL_MODELS / CHAIRMAN_MODEL, or map aliases:
+AZURE_FOUNDRY_DEPLOYMENT_MAP={"council-1":"gpt-4.1","council-2":"gpt-4.1-mini","chairman":"gpt-4.1"}
+```
+
+### 5. Algorithm Configuration
+
+Council flow is configurable via `COUNCIL_ALGORITHM`:
+
+- `peer_review` (default): Stage1 + Stage2 + Stage3
+- `consensus_only`: Stage1 + Stage3
+- `chairman_only`: direct chairman response
+
+Optional ranking aggregation method for metadata:
+
+```bash
+RANK_AGGREGATION_METHOD=average_rank   # or borda
+```
+
 ## Running the Application
 
 **Option 1: Use the start script**
@@ -85,3 +114,24 @@ Then open http://localhost:5173 in your browser.
 - **Frontend:** React + Vite, react-markdown for rendering
 - **Storage:** JSON files in `data/conversations/`
 - **Package Management:** uv for Python, npm for JavaScript
+
+
+## CLI Mode (Markdown outputs)
+
+You can run the council from terminal and write markdown reports (great for blog draft review loops):
+
+```bash
+uv run llm-council-cli --prompt "Review this draft for argument quality" --output data/council-runs/review.md
+
+# Run on a markdown file and print final synthesis
+uv run llm-council-cli --input-file /path/to/draft.md --algorithm peer_review --print-final
+```
+
+Example for writing directly into your knowledge repo:
+
+```bash
+uv run llm-council-cli \
+  --input-file /Users/pawan/Documents/development/pawan-knowledge/blog/drafts/2026-02-agent-identity-crisis-x-article.md \
+  --algorithm peer_review \
+  --output /Users/pawan/Documents/development/pawan-knowledge/knowledge/ai-agents/council-review-agent-identity.md
+```

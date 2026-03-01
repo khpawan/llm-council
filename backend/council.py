@@ -2,7 +2,7 @@
 
 from typing import List, Dict, Any, Tuple
 from .openrouter import query_models_parallel, query_model
-from .config import COUNCIL_MODELS, CHAIRMAN_MODEL
+from .config import COUNCIL_MODELS, CHAIRMAN_MODEL, COUNCIL_ALGORITHM, RANK_AGGREGATION_METHOD
 
 
 async def stage1_collect_responses(user_query: str) -> List[Dict[str, Any]]:
@@ -215,22 +215,14 @@ def calculate_aggregate_rankings(
     """
     Calculate aggregate rankings across all models.
 
-    Args:
-        stage2_results: Rankings from each model
-        label_to_model: Mapping from anonymous labels to model names
-
-    Returns:
-        List of dicts with model name and average rank, sorted best to worst
+    Returns average rank by default, or Borda points if configured.
     """
     from collections import defaultdict
 
-    # Track positions for each model
     model_positions = defaultdict(list)
 
     for ranking in stage2_results:
-        ranking_text = ranking['ranking']
-
-        # Parse the ranking from the structured format
+        ranking_text = ranking["ranking"]
         parsed_ranking = parse_ranking_from_text(ranking_text)
 
         for position, label in enumerate(parsed_ranking, start=1):
@@ -238,8 +230,22 @@ def calculate_aggregate_rankings(
                 model_name = label_to_model[label]
                 model_positions[model_name].append(position)
 
-    # Calculate average position for each model
     aggregate = []
+
+    if RANK_AGGREGATION_METHOD == "borda":
+        max_rank = max((len(v) for v in model_positions.values()), default=0)
+        for model, positions in model_positions.items():
+            if not positions:
+                continue
+            points = sum(max(max_rank - p + 1, 1) for p in positions)
+            aggregate.append({
+                "model": model,
+                "borda_points": points,
+                "rankings_count": len(positions)
+            })
+        aggregate.sort(key=lambda x: x["borda_points"], reverse=True)
+        return aggregate
+
     for model, positions in model_positions.items():
         if positions:
             avg_rank = sum(positions) / len(positions)
@@ -249,9 +255,7 @@ def calculate_aggregate_rankings(
                 "rankings_count": len(positions)
             })
 
-    # Sort by average rank (lower is better)
-    aggregate.sort(key=lambda x: x['average_rank'])
-
+    aggregate.sort(key=lambda x: x["average_rank"])
     return aggregate
 
 
@@ -275,7 +279,7 @@ Title:"""
     messages = [{"role": "user", "content": title_prompt}]
 
     # Use gemini-2.5-flash for title generation (fast and cheap)
-    response = await query_model("google/gemini-2.5-flash", messages, timeout=30.0)
+    response = await query_model(CHAIRMAN_MODEL, messages, timeout=30.0)
 
     if response is None:
         # Fallback to a generic title
@@ -293,43 +297,41 @@ Title:"""
     return title
 
 
-async def run_full_council(user_query: str) -> Tuple[List, List, Dict, Dict]:
-    """
-    Run the complete 3-stage council process.
+async def run_full_council(user_query: str, algorithm: str | None = None) -> Tuple[List, List, Dict, Dict]:
+    """Run the council process with configurable algorithm."""
+    algo = (algorithm or COUNCIL_ALGORITHM or "peer_review").strip().lower()
 
-    Args:
-        user_query: The user's question
+    if algo == "chairman_only":
+        stage3_result = await stage3_synthesize_final(user_query, [], [])
+        metadata = {"algorithm": algo, "label_to_model": {}, "aggregate_rankings": []}
+        return [], [], stage3_result, metadata
 
-    Returns:
-        Tuple of (stage1_results, stage2_results, stage3_result, metadata)
-    """
-    # Stage 1: Collect individual responses
     stage1_results = await stage1_collect_responses(user_query)
 
-    # If no models responded successfully, return error
     if not stage1_results:
         return [], [], {
             "model": "error",
             "response": "All models failed to respond. Please try again."
-        }, {}
+        }, {"algorithm": algo, "label_to_model": {}, "aggregate_rankings": []}
 
-    # Stage 2: Collect rankings
+    if algo == "consensus_only":
+        stage3_result = await stage3_synthesize_final(user_query, stage1_results, [])
+        metadata = {"algorithm": algo, "label_to_model": {}, "aggregate_rankings": []}
+        return stage1_results, [], stage3_result, metadata
+
     stage2_results, label_to_model = await stage2_collect_rankings(user_query, stage1_results)
-
-    # Calculate aggregate rankings
     aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
 
-    # Stage 3: Synthesize final answer
     stage3_result = await stage3_synthesize_final(
         user_query,
         stage1_results,
-        stage2_results
+        stage2_results,
     )
 
-    # Prepare metadata
     metadata = {
+        "algorithm": algo,
         "label_to_model": label_to_model,
-        "aggregate_rankings": aggregate_rankings
+        "aggregate_rankings": aggregate_rankings,
     }
 
     return stage1_results, stage2_results, stage3_result, metadata
