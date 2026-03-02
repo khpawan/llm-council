@@ -34,7 +34,8 @@ async def stage1_collect_responses(user_query: str) -> List[Dict[str, Any]]:
 
 async def stage2_collect_rankings(
     user_query: str,
-    stage1_results: List[Dict[str, Any]]
+    stage1_results: List[Dict[str, Any]],
+    mode: str = "peer_review",
 ) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
     """
     Stage 2: Each model ranks the anonymized responses.
@@ -61,7 +62,78 @@ async def stage2_collect_rankings(
         for label, result in zip(labels, stage1_results)
     ])
 
-    ranking_prompt = f"""A user asked the following question, and several candidate answers were written. Please act as a quality reviewer: read each answer, assess accuracy, completeness, and clarity, then rank them.
+    mode = (mode or "peer_review").strip().lower()
+
+    if mode == "red_team":
+        ranking_prompt = f"""A user asked the following question and several candidate answers were written. You are the RED TEAM reviewer.
+
+Question: {user_query}
+
+Candidate answers:
+
+{responses_text}
+
+Instructions:
+1. For each answer, identify concrete failure modes: factual errors, weak assumptions, security risks, ambiguous claims, or missing caveats.
+2. Prioritize exploitability and business impact where relevant.
+3. Then provide a final ranking from most robust to most fragile.
+
+Format your final ranking exactly like this:
+
+FINAL RANKING:
+1. Response C
+2. Response A
+3. Response B
+
+Do not add extra text after the ranking."""
+    elif mode == "audience_split":
+        ranking_prompt = f"""A user asked the following question and several candidate answers were written. Evaluate each answer for three audiences:
+- Executive leadership
+- Security engineering
+- Product/operations
+
+Question: {user_query}
+
+Candidate answers:
+
+{responses_text}
+
+Instructions:
+1. For each answer, briefly score fit for each audience (high/medium/low) and note why.
+2. Then provide one overall ranking for cross-audience usefulness.
+
+Format your final ranking exactly like this:
+
+FINAL RANKING:
+1. Response C
+2. Response A
+3. Response B
+
+Do not add extra text after the ranking."""
+    elif mode == "claim_evidence":
+        ranking_prompt = f"""A user asked the following question and several candidate answers were written. Evaluate each answer using a claim-evidence lens.
+
+Question: {user_query}
+
+Candidate answers:
+
+{responses_text}
+
+Instructions:
+1. For each answer, label major claims as: well-supported, plausible-but-weak, or unsupported.
+2. Note where citations/evidence are needed.
+3. Then provide a final ranking from strongest evidentiary quality to weakest.
+
+Format your final ranking exactly like this:
+
+FINAL RANKING:
+1. Response C
+2. Response A
+3. Response B
+
+Do not add extra text after the ranking."""
+    else:
+        ranking_prompt = f"""A user asked the following question, and several candidate answers were written. Please act as a quality reviewer: read each answer, assess accuracy, completeness, and clarity, then rank them.
 
 Question: {user_query}
 
@@ -286,7 +358,7 @@ async def run_full_council(user_query: str, algorithm: str | None = None) -> Tup
     """Run the council process with configurable algorithm."""
     algo = (algorithm or COUNCIL_ALGORITHM or "peer_review").strip().lower()
 
-    if algo == "chairman_only":
+    if algo in ("chairman_only",):
         stage3_result = await stage3_synthesize_final(user_query, [], [])
         metadata = {"algorithm": algo, "label_to_model": {}, "aggregate_rankings": []}
         return [], [], stage3_result, metadata
@@ -299,12 +371,16 @@ async def run_full_council(user_query: str, algorithm: str | None = None) -> Tup
             "response": "All models failed to respond. Please try again."
         }, {"algorithm": algo, "label_to_model": {}, "aggregate_rankings": []}
 
-    if algo == "consensus_only":
+    if algo in ("consensus_only",):
         stage3_result = await stage3_synthesize_final(user_query, stage1_results, [])
         metadata = {"algorithm": algo, "label_to_model": {}, "aggregate_rankings": []}
         return stage1_results, [], stage3_result, metadata
 
-    stage2_results, label_to_model = await stage2_collect_rankings(user_query, stage1_results)
+    stage2_mode = "peer_review"
+    if algo in ("red_team", "audience_split", "claim_evidence"):
+        stage2_mode = algo
+
+    stage2_results, label_to_model = await stage2_collect_rankings(user_query, stage1_results, mode=stage2_mode)
     aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
 
     stage3_result = await stage3_synthesize_final(

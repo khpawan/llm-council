@@ -32,7 +32,7 @@ class CreateConversationRequest(BaseModel):
 class SendMessageRequest(BaseModel):
     """Request to send a message in a conversation."""
     content: str
-    algorithm: str | None = Field(default=None, description="peer_review|consensus_only|chairman_only")
+    algorithm: str | None = Field(default=None, description="peer_review|consensus_only|chairman_only|red_team|audience_split|claim_evidence")
 
 
 class ConversationMetadata(BaseModel):
@@ -152,7 +152,7 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
             # Stage 1: Collect responses
             yield f"data: {json.dumps({'type': 'stage1_start'})}\n\n"
             algo = request.algorithm
-            if algo == "chairman_only":
+            if algo in ("chairman_only",):
                 stage1_results = []
             else:
                 stage1_results = await stage1_collect_responses(request.content)
@@ -165,7 +165,10 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
             if algo not in ("chairman_only", "consensus_only"):
                 # Stage 2: Collect rankings
                 yield f"data: {json.dumps({'type': 'stage2_start'})}\n\n"
-                stage2_results, label_to_model = await stage2_collect_rankings(request.content, stage1_results)
+                stage2_mode = "peer_review"
+                if algo in ("red_team", "audience_split", "claim_evidence"):
+                    stage2_mode = algo
+                stage2_results, label_to_model = await stage2_collect_rankings(request.content, stage1_results, mode=stage2_mode)
                 aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
                 yield f"data: {json.dumps({'type': 'stage2_complete', 'data': stage2_results, 'metadata': {'label_to_model': label_to_model, 'aggregate_rankings': aggregate_rankings}})}\n\n"
 

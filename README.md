@@ -79,6 +79,9 @@ Council flow is configurable via `COUNCIL_ALGORITHM`:
 - `peer_review` (default): Stage1 + Stage2 + Stage3
 - `consensus_only`: Stage1 + Stage3
 - `chairman_only`: direct chairman response
+- `red_team`: Stage2 focuses on failure modes, exploitability, and risk ranking
+- `audience_split`: Stage2 scores each answer for executive/security/product audiences
+- `claim_evidence`: Stage2 grades claim support strength and evidence gaps
 
 Optional ranking aggregation method for metadata:
 
@@ -235,3 +238,13 @@ Ranking method recommendation:
 uv run llm-council-cli   --input-file /Users/pawan/Documents/development/pawan-knowledge/blog/drafts/2026-02-agent-identity-crisis-x-article.md   --algorithm peer_review   --output /Users/pawan/Documents/development/pawan-knowledge/knowledge/ai-agents/council-review-agent-identity.md   --print-final
 ```
 
+
+
+### Suggested workflow patterns by task
+
+- **Early ideation:** `chairman_only`
+- **Draft shaping:** `consensus_only`
+- **Pre-publish quality:** `peer_review`
+- **Security hardening pass:** `red_team`
+- **Exec communication pass:** `audience_split`
+- **Credibility/citation pass:** `claim_evidence`
