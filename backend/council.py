@@ -1,7 +1,7 @@
 """3-stage LLM Council orchestration."""
 
 from typing import List, Dict, Any, Tuple
-from .openrouter import query_models_parallel, query_model
+from .openrouter import query_models_parallel, query_model, set_execution_algorithm, reset_execution_algorithm
 from .config import COUNCIL_MODELS, CHAIRMAN_MODEL, COUNCIL_ALGORITHM, RANK_AGGREGATION_METHOD
 
 
@@ -357,42 +357,46 @@ Title:"""
 async def run_full_council(user_query: str, algorithm: str | None = None) -> Tuple[List, List, Dict, Dict]:
     """Run the council process with configurable algorithm."""
     algo = (algorithm or COUNCIL_ALGORITHM or "peer_review").strip().lower()
+    token = set_execution_algorithm(algo)
 
-    if algo in ("chairman_only",):
-        stage3_result = await stage3_synthesize_final(user_query, [], [])
-        metadata = {"algorithm": algo, "label_to_model": {}, "aggregate_rankings": []}
-        return [], [], stage3_result, metadata
+    try:
+        if algo in ("chairman_only",):
+            stage3_result = await stage3_synthesize_final(user_query, [], [])
+            metadata = {"algorithm": algo, "label_to_model": {}, "aggregate_rankings": []}
+            return [], [], stage3_result, metadata
 
-    stage1_results = await stage1_collect_responses(user_query)
+        stage1_results = await stage1_collect_responses(user_query)
 
-    if not stage1_results:
-        return [], [], {
-            "model": "error",
-            "response": "All models failed to respond. Please try again."
-        }, {"algorithm": algo, "label_to_model": {}, "aggregate_rankings": []}
+        if not stage1_results:
+            return [], [], {
+                "model": "error",
+                "response": "All models failed to respond. Please try again."
+            }, {"algorithm": algo, "label_to_model": {}, "aggregate_rankings": []}
 
-    if algo in ("consensus_only",):
-        stage3_result = await stage3_synthesize_final(user_query, stage1_results, [])
-        metadata = {"algorithm": algo, "label_to_model": {}, "aggregate_rankings": []}
-        return stage1_results, [], stage3_result, metadata
+        if algo in ("consensus_only",):
+            stage3_result = await stage3_synthesize_final(user_query, stage1_results, [])
+            metadata = {"algorithm": algo, "label_to_model": {}, "aggregate_rankings": []}
+            return stage1_results, [], stage3_result, metadata
 
-    stage2_mode = "peer_review"
-    if algo in ("red_team", "audience_split", "claim_evidence"):
-        stage2_mode = algo
+        stage2_mode = "peer_review"
+        if algo in ("red_team", "audience_split", "claim_evidence"):
+            stage2_mode = algo
 
-    stage2_results, label_to_model = await stage2_collect_rankings(user_query, stage1_results, mode=stage2_mode)
-    aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
+        stage2_results, label_to_model = await stage2_collect_rankings(user_query, stage1_results, mode=stage2_mode)
+        aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
 
-    stage3_result = await stage3_synthesize_final(
-        user_query,
-        stage1_results,
-        stage2_results,
-    )
+        stage3_result = await stage3_synthesize_final(
+            user_query,
+            stage1_results,
+            stage2_results,
+        )
 
-    metadata = {
-        "algorithm": algo,
-        "label_to_model": label_to_model,
-        "aggregate_rankings": aggregate_rankings,
-    }
+        metadata = {
+            "algorithm": algo,
+            "label_to_model": label_to_model,
+            "aggregate_rankings": aggregate_rankings,
+        }
 
-    return stage1_results, stage2_results, stage3_result, metadata
+        return stage1_results, stage2_results, stage3_result, metadata
+    finally:
+        reset_execution_algorithm(token)

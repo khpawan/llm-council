@@ -6,6 +6,16 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
+def _json_map(env_name: str) -> dict:
+    raw = os.getenv(env_name, "{}")
+    try:
+        parsed = json.loads(raw)
+        return parsed if isinstance(parsed, dict) else {}
+    except json.JSONDecodeError:
+        return {}
+
+
 # Provider selection: "openrouter" (default) or "azure_foundry"
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openrouter").strip().lower()
 
@@ -18,13 +28,19 @@ AZURE_FOUNDRY_ENDPOINT = os.getenv("AZURE_FOUNDRY_ENDPOINT", "").rstrip("/")
 AZURE_FOUNDRY_API_KEY = os.getenv("AZURE_FOUNDRY_API_KEY")
 AZURE_FOUNDRY_API_VERSION = os.getenv("AZURE_FOUNDRY_API_VERSION", "2024-10-21")
 
-# Optional JSON map of model aliases to Azure deployment names.
+# Optional map of model aliases to Azure deployment names.
 # Example: {"council-1":"gpt-4.1", "chairman":"gpt-4.1"}
-AZURE_FOUNDRY_DEPLOYMENT_MAP_RAW = os.getenv("AZURE_FOUNDRY_DEPLOYMENT_MAP", "{}")
-try:
-    AZURE_FOUNDRY_DEPLOYMENT_MAP = json.loads(AZURE_FOUNDRY_DEPLOYMENT_MAP_RAW)
-except json.JSONDecodeError:
-    AZURE_FOUNDRY_DEPLOYMENT_MAP = {}
+AZURE_FOUNDRY_DEPLOYMENT_MAP = _json_map("AZURE_FOUNDRY_DEPLOYMENT_MAP")
+
+# Optional model-level endpoint/key routing maps.
+# Example: {"gpt-5.2":"https://<resource>.services.ai.azure.com/api/projects/<proj>"}
+AZURE_FOUNDRY_ENDPOINT_MAP = _json_map("AZURE_FOUNDRY_ENDPOINT_MAP")
+AZURE_FOUNDRY_API_KEY_MAP = _json_map("AZURE_FOUNDRY_API_KEY_MAP")
+
+# Optional algorithm-level endpoint/key routing maps.
+# Example: {"red_team":"https://.../api/projects/project-b"}
+AZURE_FOUNDRY_ALGORITHM_ENDPOINT_MAP = _json_map("AZURE_FOUNDRY_ALGORITHM_ENDPOINT_MAP")
+AZURE_FOUNDRY_ALGORITHM_API_KEY_MAP = _json_map("AZURE_FOUNDRY_ALGORITHM_API_KEY_MAP")
 
 # Council members - model identifiers (OpenRouter model IDs by default).
 # For Azure Foundry, these can be deployment names (or aliases mapped in AZURE_FOUNDRY_DEPLOYMENT_MAP).
@@ -44,6 +60,7 @@ CHAIRMAN_MODEL = os.getenv("CHAIRMAN_MODEL", "google/gemini-3-pro-preview")
 # - peer_review (default): Stage1 + Stage2 + Stage3
 # - consensus_only: Stage1 + Stage3 (skip Stage2)
 # - chairman_only: chairman answers directly
+# - red_team / audience_split / claim_evidence: custom stage2 reviewer modes
 COUNCIL_ALGORITHM = os.getenv("COUNCIL_ALGORITHM", "peer_review").strip().lower()
 
 # Aggregate ranking method for Stage2 metadata: average_rank | borda

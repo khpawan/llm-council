@@ -11,6 +11,7 @@ import asyncio
 
 from . import storage
 from .council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings
+from .openrouter import set_execution_algorithm, reset_execution_algorithm
 
 app = FastAPI(title="LLM Council API")
 
@@ -144,6 +145,9 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
             # Add user message
             storage.add_user_message(conversation_id, request.content)
 
+            algo = request.algorithm
+            token = set_execution_algorithm(algo)
+
             # Start title generation in parallel (don't await yet)
             title_task = None
             if is_first_message:
@@ -151,7 +155,6 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
 
             # Stage 1: Collect responses
             yield f"data: {json.dumps({'type': 'stage1_start'})}\n\n"
-            algo = request.algorithm
             if algo in ("chairman_only",):
                 stage1_results = []
             else:

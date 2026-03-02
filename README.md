@@ -248,3 +248,30 @@ uv run llm-council-cli   --input-file /Users/pawan/Documents/development/pawan-k
 - **Security hardening pass:** `red_team`
 - **Exec communication pass:** `audience_split`
 - **Credibility/citation pass:** `claim_evidence`
+
+
+### Multi-endpoint Azure Foundry routing (model-level and algorithm-level)
+
+You can route different models (or whole algorithms) to different Foundry project endpoints/regions.
+
+#### Model-level routing (recommended)
+
+```bash
+AZURE_FOUNDRY_ENDPOINT_MAP={"gpt-5.2":"https://pawan-projgpt-resource.services.ai.azure.com/api/projects/pawan-projgpt"}
+AZURE_FOUNDRY_API_KEY_MAP={"gpt-5.2":"<key-for-gpt52-project>"}
+```
+
+#### Algorithm-level routing
+
+```bash
+AZURE_FOUNDRY_ALGORITHM_ENDPOINT_MAP={"red_team":"https://pawan-projgpt-resource.services.ai.azure.com/api/projects/pawan-projgpt"}
+AZURE_FOUNDRY_ALGORITHM_API_KEY_MAP={"red_team":"<key-for-gpt52-project>"}
+```
+
+Routing precedence in Azure mode:
+1. model-level endpoint/key map
+2. algorithm-level endpoint/key map
+3. global `AZURE_FOUNDRY_ENDPOINT` + `AZURE_FOUNDRY_API_KEY`
+
+This lets you keep most council models on one Foundry project while sending selected models/algorithms (for example GPT-5.2 red-team runs) to a different region/project.
+
