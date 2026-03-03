@@ -1,3 +1,13 @@
+## Why this exists
+
+Most council-style demos stop at multi-model brainstorming. This project focuses on practical review workflows for real teams:
+
+- **Enterprise model routing** across Azure Foundry projects/regions
+- **Pre-publish hardening modes** (`red_team`, `audience_split`, `claim_evidence`)
+- **Operational output** via CLI markdown reports that can be committed/reviewed
+
+The goal is not just better generation, but better decision quality and safer publication workflows.
+
 # LLM Council
 
 ![llmcouncil](header.jpg)
@@ -274,4 +284,31 @@ Routing precedence in Azure mode:
 3. global `AZURE_FOUNDRY_ENDPOINT` + `AZURE_FOUNDRY_API_KEY`
 
 This lets you keep most council models on one Foundry project while sending selected models/algorithms (for example GPT-5.2 red-team runs) to a different region/project.
+
+
+### Algorithm examples
+
+```bash
+# 1) Peer review (default full council)
+uv run llm-council-cli --input-file /path/to/draft.md --algorithm peer_review --output data/council-runs/peer-review.md
+
+# 2) Red-team review (failure modes + exploitability)
+uv run llm-council-cli --input-file /path/to/draft.md --algorithm red_team --output data/council-runs/red-team.md
+
+# 3) Audience fit (exec vs security vs product/ops)
+uv run llm-council-cli --input-file /path/to/draft.md --algorithm audience_split --output data/council-runs/audience-split.md
+
+# 4) Claim-evidence pass (support strength and citation gaps)
+uv run llm-council-cli --input-file /path/to/draft.md --algorithm claim_evidence --output data/council-runs/claim-evidence.md
+
+# 5) Fast chairman-only iteration
+uv run llm-council-cli --input-file /path/to/draft.md --algorithm chairman_only --output data/council-runs/chairman-only.md
+```
+
+
+### Known issue: sourcing `.env` in shell
+
+If you store JSON maps in `.env` (for example `AZURE_FOUNDRY_ENDPOINT_MAP`), avoid `source .env` directly in shell scripts because shell parsing can break JSON values.
+
+Prefer running commands directly (the app/CLI uses `python-dotenv`), or quote/escape JSON carefully when exporting env vars manually.
 
