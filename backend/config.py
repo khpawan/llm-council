@@ -4,9 +4,9 @@ Supports runtime reload and JSON persistence via data/config.json.
 Falls back to environment variables when no config file exists.
 """
 
+import copy
 import json
 import os
-import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -69,8 +69,15 @@ def reload_config() -> None:
     """Load config from config.json if it exists, otherwise from env defaults."""
     global _config
     if CONFIG_FILE.exists():
-        with open(CONFIG_FILE, "r") as f:
-            _config = json.load(f)
+        try:
+            with open(CONFIG_FILE, "r") as f:
+                loaded = json.load(f)
+            defaults = _load_env_defaults()
+            defaults.update(loaded)
+            _config = defaults
+        except (json.JSONDecodeError, OSError) as exc:
+            print(f"WARNING: Failed to load {CONFIG_FILE} ({exc}), falling back to env defaults.")
+            _config = _load_env_defaults()
     else:
         _config = _load_env_defaults()
 
@@ -78,20 +85,30 @@ def reload_config() -> None:
 def save_config(new_config: dict) -> None:
     """Write *new_config* to config.json and reload."""
     CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(CONFIG_FILE, "w") as f:
-        json.dump(new_config, f, indent=2)
+    merged = _load_env_defaults()
+    merged.update(new_config)
+    serialized = json.dumps(merged, indent=2)
+    tmp_path = CONFIG_FILE.with_suffix(".tmp")
+    try:
+        tmp_path.write_text(serialized, encoding="utf-8")
+        tmp_path.replace(CONFIG_FILE)
+    finally:
+        if tmp_path.exists():
+            tmp_path.unlink(missing_ok=True)
     reload_config()
 
 
 def get_config() -> dict:
     """Return a copy of the current config dict."""
-    return dict(_config)
+    return copy.deepcopy(_config)
 
 
 def _mask_key(value: str | None) -> str | None:
     """Mask an API key, showing first 4 and last 4 chars."""
-    if not value or len(value) <= 8:
+    if not value:
         return value
+    if len(value) <= 8:
+        return "****"
     return value[:4] + "*" * (len(value) - 8) + value[-4:]
 
 

@@ -4,19 +4,7 @@ from typing import List, Dict, Any, Optional
 import contextvars
 import httpx
 
-from .config import (
-    LLM_PROVIDER,
-    OPENROUTER_API_KEY,
-    OPENROUTER_API_URL,
-    AZURE_FOUNDRY_ENDPOINT,
-    AZURE_FOUNDRY_API_KEY,
-    AZURE_FOUNDRY_API_VERSION,
-    AZURE_FOUNDRY_DEPLOYMENT_MAP,
-    AZURE_FOUNDRY_ENDPOINT_MAP,
-    AZURE_FOUNDRY_API_KEY_MAP,
-    AZURE_FOUNDRY_ALGORITHM_ENDPOINT_MAP,
-    AZURE_FOUNDRY_ALGORITHM_API_KEY_MAP,
-)
+from .config import get_config
 
 _CURRENT_ALGORITHM: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
     "llm_council_current_algorithm", default=None
@@ -33,28 +21,31 @@ def reset_execution_algorithm(token: contextvars.Token) -> None:
 
 
 def _resolve_azure_deployment(model: str) -> str:
-    return AZURE_FOUNDRY_DEPLOYMENT_MAP.get(model, model)
+    cfg = get_config()
+    return cfg["azure_foundry_deployment_map"].get(model, model)
 
 
 def _resolve_azure_endpoint_and_key(model: str) -> tuple[str, Optional[str]]:
+    cfg = get_config()
     # Precedence: model-specific > algorithm-specific > global default
-    model_endpoint = AZURE_FOUNDRY_ENDPOINT_MAP.get(model, "").rstrip("/")
-    model_key = AZURE_FOUNDRY_API_KEY_MAP.get(model)
+    model_endpoint = cfg["azure_foundry_endpoint_map"].get(model, "").rstrip("/")
+    model_key = cfg["azure_foundry_api_key_map"].get(model)
     if model_endpoint:
-        return model_endpoint, model_key or AZURE_FOUNDRY_API_KEY
+        return model_endpoint, model_key or cfg["azure_foundry_api_key"]
 
     algorithm = _CURRENT_ALGORITHM.get()
     if algorithm:
-        algo_endpoint = AZURE_FOUNDRY_ALGORITHM_ENDPOINT_MAP.get(algorithm, "").rstrip("/")
+        algo_endpoint = cfg["azure_foundry_algorithm_endpoint_map"].get(algorithm, "").rstrip("/")
         if algo_endpoint:
-            algo_key = AZURE_FOUNDRY_ALGORITHM_API_KEY_MAP.get(algorithm)
-            return algo_endpoint, algo_key or AZURE_FOUNDRY_API_KEY
+            algo_key = cfg["azure_foundry_algorithm_api_key_map"].get(algorithm)
+            return algo_endpoint, algo_key or cfg["azure_foundry_api_key"]
 
-    return AZURE_FOUNDRY_ENDPOINT, AZURE_FOUNDRY_API_KEY
+    return cfg["azure_foundry_endpoint"], cfg["azure_foundry_api_key"]
 
 
 def _build_request(model: str, messages: List[Dict[str, str]]) -> tuple[str, Dict[str, str], Dict[str, Any]]:
-    provider = LLM_PROVIDER
+    cfg = get_config()
+    provider = cfg["llm_provider"]
 
     if provider == "azure_foundry":
         deployment = _resolve_azure_deployment(model)
@@ -67,7 +58,7 @@ def _build_request(model: str, messages: List[Dict[str, str]]) -> tuple[str, Dic
 
         url = (
             f"{endpoint}/openai/deployments/{deployment}/chat/completions"
-            f"?api-version={AZURE_FOUNDRY_API_VERSION}"
+            f"?api-version={cfg['azure_foundry_api_version']}"
         )
         headers = {
             "api-key": api_key,
@@ -79,18 +70,19 @@ def _build_request(model: str, messages: List[Dict[str, str]]) -> tuple[str, Dic
         return url, headers, payload
 
     # default: openrouter
-    if not OPENROUTER_API_KEY:
+    openrouter_api_key = cfg["openrouter_api_key"]
+    if not openrouter_api_key:
         raise ValueError("OPENROUTER_API_KEY is required for LLM_PROVIDER=openrouter")
 
     headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Authorization": f"Bearer {openrouter_api_key}",
         "Content-Type": "application/json",
     }
     payload = {
         "model": model,
         "messages": messages,
     }
-    return OPENROUTER_API_URL, headers, payload
+    return cfg["openrouter_api_url"], headers, payload
 
 
 async def query_model(
@@ -115,7 +107,7 @@ async def query_model(
         }
 
     except Exception as e:
-        print(f"Error querying model {model} via {LLM_PROVIDER}: {e}")
+        print(f"Error querying model {model} via {get_config()['llm_provider']}: {e}")
         return None
 
 

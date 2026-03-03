@@ -9,7 +9,7 @@ from pathlib import Path
 import json
 
 from .council import run_full_council
-from .config import COUNCIL_ALGORITHM, LLM_PROVIDER, COUNCIL_MODELS, CHAIRMAN_MODEL
+from .config import get_config
 
 
 def _read_prompt(args: argparse.Namespace) -> str:
@@ -46,13 +46,14 @@ def _fmt_stage2(stage2: list[dict]) -> str:
 
 def _to_markdown(prompt: str, stage1: list[dict], stage2: list[dict], stage3: dict, metadata: dict) -> str:
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cfg = get_config()
     return f"""# LLM Council Run
 
 - Generated: {timestamp}
-- Provider: `{LLM_PROVIDER}`
-- Algorithm: `{metadata.get('algorithm', COUNCIL_ALGORITHM)}`
-- Council models: `{', '.join(COUNCIL_MODELS)}`
-- Chairman: `{CHAIRMAN_MODEL}`
+- Provider: `{cfg['llm_provider']}`
+- Algorithm: `{metadata.get('algorithm', cfg['council_algorithm'])}`
+- Council models: `{', '.join(cfg['council_models'])}`
+- Chairman: `{cfg['chairman_model']}`
 
 ## Prompt
 

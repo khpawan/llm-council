@@ -2,7 +2,7 @@
 
 from typing import List, Dict, Any, Tuple
 from .openrouter import query_models_parallel, query_model, set_execution_algorithm, reset_execution_algorithm
-from .config import COUNCIL_MODELS, CHAIRMAN_MODEL, COUNCIL_ALGORITHM, RANK_AGGREGATION_METHOD
+from .config import get_config
 
 
 async def stage1_collect_responses(user_query: str) -> List[Dict[str, Any]]:
@@ -18,7 +18,7 @@ async def stage1_collect_responses(user_query: str) -> List[Dict[str, Any]]:
     messages = [{"role": "user", "content": user_query}]
 
     # Query all models in parallel
-    responses = await query_models_parallel(COUNCIL_MODELS, messages)
+    responses = await query_models_parallel(get_config()["council_models"], messages)
 
     # Format results
     stage1_results = []
@@ -157,7 +157,7 @@ Replace the letters with the actual labels above. Do not add extra text after th
     messages = [{"role": "user", "content": ranking_prompt}]
 
     # Get rankings from all council models in parallel
-    responses = await query_models_parallel(COUNCIL_MODELS, messages)
+    responses = await query_models_parallel(get_config()["council_models"], messages)
 
     # Format results
     stage2_results = []
@@ -216,17 +216,18 @@ Based on the answers and reviews above, provide a clear, well-reasoned final ans
     messages = [{"role": "user", "content": chairman_prompt}]
 
     # Query the chairman model
-    response = await query_model(CHAIRMAN_MODEL, messages)
+    chairman_model = get_config()["chairman_model"]
+    response = await query_model(chairman_model, messages)
 
     if response is None:
         # Fallback if chairman fails
         return {
-            "model": CHAIRMAN_MODEL,
+            "model": chairman_model,
             "response": "Error: Unable to generate final synthesis."
         }
 
     return {
-        "model": CHAIRMAN_MODEL,
+        "model": chairman_model,
         "response": response.get('content', '')
     }
 
@@ -289,7 +290,7 @@ def calculate_aggregate_rankings(
 
     aggregate = []
 
-    if RANK_AGGREGATION_METHOD == "borda":
+    if get_config()["rank_aggregation_method"] == "borda":
         max_rank = max((len(v) for v in model_positions.values()), default=0)
         for model, positions in model_positions.items():
             if not positions:
@@ -336,7 +337,7 @@ Title:"""
     messages = [{"role": "user", "content": title_prompt}]
 
     # Use gemini-2.5-flash for title generation (fast and cheap)
-    response = await query_model(CHAIRMAN_MODEL, messages, timeout=30.0)
+    response = await query_model(get_config()["chairman_model"], messages, timeout=30.0)
 
     if response is None:
         # Fallback to a generic title
@@ -356,7 +357,7 @@ Title:"""
 
 async def run_full_council(user_query: str, algorithm: str | None = None) -> Tuple[List, List, Dict, Dict]:
     """Run the council process with configurable algorithm."""
-    algo = (algorithm or COUNCIL_ALGORITHM or "peer_review").strip().lower()
+    algo = (algorithm or get_config()["council_algorithm"] or "peer_review").strip().lower()
     token = set_execution_algorithm(algo)
 
     try:
