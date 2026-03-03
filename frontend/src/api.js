@@ -73,7 +73,7 @@ export const api = {
    * @param {function} onEvent - Callback function for each event: (eventType, data) => void
    * @returns {Promise<void>}
    */
-  async sendMessageStream(conversationId, content, onEvent) {
+  async sendMessageStream(conversationId, content, onEvent, algorithm) {
     const response = await fetch(
       `${API_BASE}/api/conversations/${conversationId}/message/stream`,
       {
@@ -81,7 +81,7 @@ export const api = {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content, algorithm }),
       }
     );
 
@@ -111,5 +111,49 @@ export const api = {
         }
       }
     }
+  },
+
+  /**
+   * Get the current council configuration.
+   */
+  async getConfig() {
+    const response = await fetch(`${API_BASE}/api/config`);
+    if (!response.ok) {
+      throw new Error('Failed to get config');
+    }
+    return response.json();
+  },
+
+  /**
+   * Save the council configuration.
+   */
+  async saveConfig(config) {
+    const response = await fetch(`${API_BASE}/api/config`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(config),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to save config');
+    }
+    return response.json();
+  },
+
+  /**
+   * Test the current council configuration.
+   */
+  async testConfig() {
+    const response = await fetch(`${API_BASE}/api/config/test`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    if (!response.ok) {
+      throw new Error('Failed to test config');
+    }
+    return response.json();
   },
 };
