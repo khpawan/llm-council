@@ -11,7 +11,8 @@ import asyncio
 
 from . import storage
 from .council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings
-from .openrouter import set_execution_algorithm, reset_execution_algorithm
+from .openrouter import set_execution_algorithm, reset_execution_algorithm, query_model
+from .config import get_config_masked, save_config, reload_config, get_config
 
 app = FastAPI(title="LLM Council API")
 
@@ -209,6 +210,95 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
             "Connection": "keep-alive",
         }
     )
+
+
+class SaveConfigRequest(BaseModel):
+    """Request to save configuration."""
+    llm_provider: str
+    openrouter_api_key: str | None = None
+    openrouter_api_url: str | None = None
+    azure_foundry_endpoint: str | None = None
+    azure_foundry_api_key: str | None = None
+    azure_foundry_api_version: str | None = None
+    azure_foundry_deployment_map: dict | None = None
+    azure_foundry_endpoint_map: dict | None = None
+    azure_foundry_api_key_map: dict | None = None
+    azure_foundry_algorithm_endpoint_map: dict | None = None
+    azure_foundry_algorithm_api_key_map: dict | None = None
+    council_models: list[str]
+    chairman_model: str
+    council_algorithm: str
+    rank_aggregation_method: str
+
+
+@app.get("/api/config")
+async def get_config_endpoint():
+    """Return current configuration with API keys masked."""
+    return get_config_masked()
+
+
+@app.post("/api/config")
+async def save_config_endpoint(request: SaveConfigRequest):
+    """Save configuration. Preserves existing API keys if masked values are sent back."""
+    config_data = request.model_dump()
+
+    # Preserve existing API keys if the frontend sent back masked values
+    existing = get_config()
+
+    if config_data.get("openrouter_api_key") and "*" in config_data["openrouter_api_key"]:
+        config_data["openrouter_api_key"] = existing.get("openrouter_api_key")
+
+    if config_data.get("azure_foundry_api_key") and "*" in config_data["azure_foundry_api_key"]:
+        config_data["azure_foundry_api_key"] = existing.get("azure_foundry_api_key")
+
+    # Check values in azure_foundry_api_key_map
+    if config_data.get("azure_foundry_api_key_map"):
+        existing_map = existing.get("azure_foundry_api_key_map") or {}
+        for key, value in config_data["azure_foundry_api_key_map"].items():
+            if value and "*" in value:
+                config_data["azure_foundry_api_key_map"][key] = existing_map.get(key)
+
+    # Check values in azure_foundry_algorithm_api_key_map
+    if config_data.get("azure_foundry_algorithm_api_key_map"):
+        existing_map = existing.get("azure_foundry_algorithm_api_key_map") or {}
+        for key, value in config_data["azure_foundry_algorithm_api_key_map"].items():
+            if value and "*" in value:
+                config_data["azure_foundry_algorithm_api_key_map"][key] = existing_map.get(key)
+
+    save_config(config_data)
+    reload_config()
+    return {"status": "ok", "message": "Configuration saved and reloaded"}
+
+
+@app.post("/api/config/test")
+async def test_config_endpoint():
+    """Test connectivity by pinging the first council model."""
+    try:
+        reload_config()
+        config = get_config()
+        council_models = config.get("council_models", [])
+        if not council_models:
+            raise HTTPException(status_code=400, detail="No council models configured")
+
+        test_model = council_models[0]
+        result = await query_model(
+            test_model,
+            "Say 'hello' in one word.",
+            system_prompt="You are a helpful assistant."
+        )
+
+        if result is None:
+            return {"status": "error", "message": f"Failed to get response from {test_model}"}
+
+        return {
+            "status": "ok",
+            "model": test_model,
+            "response": result.get("content", "")[:200]
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 
 if __name__ == "__main__":
