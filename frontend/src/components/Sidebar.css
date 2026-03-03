@@ -18,8 +18,14 @@
   color: #333;
 }
 
+.sidebar-header-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .new-conversation-btn {
-  width: 100%;
+  flex: 1;
   padding: 10px;
   background: #4a90e2;
   border: 1px solid #4a90e2;
@@ -75,4 +81,20 @@
 .conversation-meta {
   color: #999;
   font-size: 12px;
+}
+
+.settings-btn {
+  background: none;
+  border: 1px solid #d0d0d0;
+  color: #888;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 16px;
+}
+
+.settings-btn:hover {
+  background: #f0f7ff;
+  border-color: #4a90e2;
+  color: #4a90e2;
 }

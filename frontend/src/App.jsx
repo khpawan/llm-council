@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import ChatInterface from './components/ChatInterface';
+import Settings from './components/Settings';
 import { api } from './api';
 import './App.css';
 
@@ -9,10 +10,26 @@ function App() {
   const [currentConversationId, setCurrentConversationId] = useState(null);
   const [currentConversation, setCurrentConversation] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [view, setView] = useState(window.location.hash === '#settings' ? 'settings' : 'chat');
+  const [algorithm, setAlgorithm] = useState('peer_review');
+
+  // Hash routing
+  useEffect(() => {
+    const onHash = () => setView(window.location.hash === '#settings' ? 'settings' : 'chat');
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
 
   // Load conversations on mount
   useEffect(() => {
     loadConversations();
+  }, []);
+
+  // Load default algorithm from config on mount
+  useEffect(() => {
+    api.getConfig().then(cfg => {
+      if (cfg.council_algorithm) setAlgorithm(cfg.council_algorithm);
+    }).catch(() => {});
   }, []);
 
   // Load conversation details when selected
@@ -169,7 +186,7 @@ function App() {
           default:
             console.log('Unknown event type:', eventType);
         }
-      });
+      }, algorithm);
     } catch (error) {
       console.error('Failed to send message:', error);
       // Remove optimistic messages on error
@@ -181,6 +198,9 @@ function App() {
     }
   };
 
+  const handleOpenSettings = () => { window.location.hash = '#settings'; };
+  const handleBackToChat = () => { window.location.hash = '#chat'; };
+
   return (
     <div className="app">
       <Sidebar
@@ -188,12 +208,19 @@ function App() {
         currentConversationId={currentConversationId}
         onSelectConversation={handleSelectConversation}
         onNewConversation={handleNewConversation}
+        onOpenSettings={handleOpenSettings}
       />
-      <ChatInterface
-        conversation={currentConversation}
-        onSendMessage={handleSendMessage}
-        isLoading={isLoading}
-      />
+      {view === 'settings' ? (
+        <Settings />
+      ) : (
+        <ChatInterface
+          conversation={currentConversation}
+          onSendMessage={handleSendMessage}
+          isLoading={isLoading}
+          algorithm={algorithm}
+          onAlgorithmChange={setAlgorithm}
+        />
+      )}
     </div>
   );
 }
