@@ -283,8 +283,8 @@ async def test_config_endpoint():
         test_model = council_models[0]
         result = await query_model(
             test_model,
-            "Say 'hello' in one word.",
-            system_prompt="You are a helpful assistant."
+            [{"role": "user", "content": "Say OK"}],
+            timeout=30.0
         )
 
         if result is None:
