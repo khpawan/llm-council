@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { api } from '../api';
 import './Settings.css';
 
-export default function Settings() {
+export default function Settings({ onBackToChat }) {
   const [provider, setProvider] = useState('openrouter');
   const [azureEndpoint, setAzureEndpoint] = useState('');
   const [azureApiKey, setAzureApiKey] = useState('');
@@ -17,7 +17,38 @@ export default function Settings() {
   const [toast, setToast] = useState(null);
 
   useEffect(() => {
-    loadConfig();
+    async function loadConfig() {
+      try {
+        const config = await api.getConfig();
+        setProvider(config.llm_provider || 'openrouter');
+        setAzureEndpoint(config.azure_foundry_endpoint || '');
+        setAzureApiKey(config.azure_foundry_api_key || '');
+        setAzureApiVersion(config.azure_foundry_api_version || '');
+        setOpenrouterApiKey(config.openrouter_api_key || '');
+        setAlgorithm(config.council_algorithm || 'peer_review');
+        setRankingAggregation(config.rank_aggregation_method || 'average_rank');
+        setChairmanModel(config.chairman_model || '');
+
+        const deploymentMap = config.azure_foundry_deployment_map || {};
+        const models = config.council_models || [];
+
+        if (Object.keys(deploymentMap).length > 0) {
+          setDeployments(
+            Object.entries(deploymentMap).map(([name, model]) => ({ name, model }))
+          );
+        } else if (models.length > 0) {
+          setDeployments(models.map((model) => ({ name: model, model })));
+        }
+
+        setCouncilModels(config.council_models || []);
+      } catch {
+        showToast('Failed to load configuration', 'error');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    void loadConfig();
   }, []);
 
   useEffect(() => {
@@ -26,37 +57,6 @@ export default function Settings() {
       return () => clearTimeout(timer);
     }
   }, [toast]);
-
-  async function loadConfig() {
-    try {
-      const config = await api.getConfig();
-      setProvider(config.provider || 'openrouter');
-      setAzureEndpoint(config.azure_foundry_endpoint || '');
-      setAzureApiKey(config.azure_foundry_api_key || '');
-      setAzureApiVersion(config.azure_foundry_api_version || '');
-      setOpenrouterApiKey(config.openrouter_api_key || '');
-      setAlgorithm(config.default_algorithm || 'peer_review');
-      setRankingAggregation(config.default_ranking_aggregation || 'average_rank');
-      setChairmanModel(config.chairman_model || '');
-
-      const deploymentMap = config.azure_foundry_deployment_map || {};
-      const models = config.council_models || [];
-
-      if (Object.keys(deploymentMap).length > 0) {
-        setDeployments(
-          Object.entries(deploymentMap).map(([name, model]) => ({ name, model }))
-        );
-      } else if (models.length > 0) {
-        setDeployments(models.map((m) => ({ name: m, model: m })));
-      }
-
-      setCouncilModels(config.council_models || []);
-    } catch (e) {
-      showToast('Failed to load configuration', 'error');
-    } finally {
-      setLoading(false);
-    }
-  }
 
   function showToast(message, type = 'success') {
     setToast({ message, type });
@@ -81,6 +81,9 @@ export default function Settings() {
     const updated = [...deployments];
     const oldName = updated[index].name;
     updated[index] = { ...updated[index], [field]: value };
+    if (provider !== 'azure_foundry' && field === 'name') {
+      updated[index].model = value;
+    }
     setDeployments(updated);
 
     if (field === 'name' && oldName !== value) {
@@ -101,11 +104,11 @@ export default function Settings() {
 
   function assembleConfig() {
     const config = {
-      provider,
+      llm_provider: provider,
       council_models: councilModels,
       chairman_model: chairmanModel,
-      default_algorithm: algorithm,
-      default_ranking_aggregation: rankingAggregation,
+      council_algorithm: algorithm,
+      rank_aggregation_method: rankingAggregation,
     };
 
     if (provider === 'azure_foundry') {
@@ -130,7 +133,7 @@ export default function Settings() {
     try {
       await api.saveConfig(assembleConfig());
       showToast('Configuration saved successfully', 'success');
-    } catch (e) {
+    } catch {
       showToast('Failed to save configuration', 'error');
     }
   }
@@ -138,12 +141,12 @@ export default function Settings() {
   async function handleTest() {
     try {
       const result = await api.testConfig(assembleConfig());
-      if (result.success) {
+      if (result.status === 'ok') {
         showToast('Connection test passed', 'success');
       } else {
         showToast(result.message || 'Connection test failed', 'error');
       }
-    } catch (e) {
+    } catch {
       showToast('Connection test failed', 'error');
     }
   }
@@ -156,7 +159,14 @@ export default function Settings() {
 
   return (
     <div className="settings-page">
-      <h2 className="settings-title">Settings</h2>
+      <div className="settings-header">
+        <h2 className="settings-title">Settings</h2>
+        {onBackToChat && (
+          <button className="btn-outline settings-back-btn" onClick={onBackToChat}>
+            Back to Chat
+          </button>
+        )}
+      </div>
 
       {/* Provider Section */}
       <section className="settings-section">
@@ -220,7 +230,7 @@ export default function Settings() {
 
       {/* Deployments Section */}
       <section className="settings-section">
-        <h3>Deployments</h3>
+        <h3>{provider === 'azure_foundry' ? 'Model Mappings' : 'Models'}</h3>
         {deployments.map((dep, index) => (
           <div key={index} className="deployment-row">
             <input
@@ -228,26 +238,28 @@ export default function Settings() {
               className="settings-input deployment-input"
               value={dep.name}
               onChange={(e) => updateDeployment(index, 'name', e.target.value)}
-              placeholder="Deployment name"
+              placeholder={provider === 'azure_foundry' ? 'Model label' : 'Model ID'}
             />
-            <input
-              type="text"
-              className="settings-input deployment-input"
-              value={dep.model}
-              onChange={(e) => updateDeployment(index, 'model', e.target.value)}
-              placeholder="Model label"
-            />
+            {provider === 'azure_foundry' && (
+              <input
+                type="text"
+                className="settings-input deployment-input"
+                value={dep.model}
+                onChange={(e) => updateDeployment(index, 'model', e.target.value)}
+                placeholder="Deployment name"
+              />
+            )}
             <button
               className="btn-remove"
               onClick={() => removeDeployment(index)}
-              title="Remove deployment"
+              title={provider === 'azure_foundry' ? 'Remove mapping' : 'Remove model'}
             >
               &times;
             </button>
           </div>
         ))}
         <button className="btn-add" onClick={addDeployment}>
-          + Add Deployment
+          + Add {provider === 'azure_foundry' ? 'Model Mapping' : 'Model'}
         </button>
       </section>
 
@@ -267,7 +279,9 @@ export default function Settings() {
             </label>
           ))}
           {deploymentNames.length === 0 && (
-            <p className="settings-hint">Add deployments above to configure council members.</p>
+            <p className="settings-hint">
+              Add {provider === 'azure_foundry' ? 'model mappings' : 'models'} above to configure council members.
+            </p>
           )}
         </div>
         <label className="settings-label">Chairman Model</label>

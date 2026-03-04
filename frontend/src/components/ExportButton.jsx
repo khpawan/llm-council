@@ -40,7 +40,6 @@ export default function ExportButton({ message, query }) {
 
     // Stage 2
     if (stage2 && stage2.length > 0) {
-      const labelToModel = metadata && metadata.label_to_model ? metadata.label_to_model : null;
       const aggregateRankings = metadata && metadata.aggregate_rankings ? metadata.aggregate_rankings : null;
 
       lines.push('## Stage 2: Peer Evaluations');
@@ -65,7 +64,13 @@ export default function ExportButton({ message, query }) {
         lines.push('|------|-------|-------|-------|');
         aggregateRankings.forEach((agg, index) => {
           const modelName = agg.model.split('/')[1] || agg.model;
-          lines.push(`| ${index + 1} | ${modelName} | Avg: ${agg.average_rank.toFixed(2)} | ${agg.rankings_count} |`);
+          let score = 'N/A';
+          if (typeof agg.average_rank === 'number') {
+            score = `Avg: ${agg.average_rank.toFixed(2)}`;
+          } else if (typeof agg.borda_points === 'number') {
+            score = `Borda: ${agg.borda_points}`;
+          }
+          lines.push(`| ${index + 1} | ${modelName} | ${score} | ${agg.rankings_count} |`);
         });
         lines.push('');
       }

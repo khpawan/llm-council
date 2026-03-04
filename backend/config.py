@@ -86,6 +86,7 @@ def save_config(new_config: dict) -> None:
     """Write *new_config* to config.json and reload."""
     CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
     merged = _load_env_defaults()
+    merged.update(get_config())
     merged.update(new_config)
     serialized = json.dumps(merged, indent=2)
     tmp_path = CONFIG_FILE.with_suffix(".tmp")

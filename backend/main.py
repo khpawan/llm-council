@@ -115,7 +115,8 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
         conversation_id,
         stage1_results,
         stage2_results,
-        stage3_result
+        stage3_result,
+        metadata,
     )
 
     # Return the complete response with metadata
@@ -142,11 +143,12 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
     is_first_message = len(conversation["messages"]) == 0
 
     async def event_generator():
+        token = None
         try:
             # Add user message
             storage.add_user_message(conversation_id, request.content)
 
-            algo = request.algorithm
+            algo = (request.algorithm or get_config().get("council_algorithm") or "peer_review").strip().lower()
             token = set_execution_algorithm(algo)
 
             # Start title generation in parallel (don't await yet)
@@ -174,12 +176,18 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                     stage2_mode = algo
                 stage2_results, label_to_model = await stage2_collect_rankings(request.content, stage1_results, mode=stage2_mode)
                 aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
-                yield f"data: {json.dumps({'type': 'stage2_complete', 'data': stage2_results, 'metadata': {'label_to_model': label_to_model, 'aggregate_rankings': aggregate_rankings}})}\n\n"
+                yield f"data: {json.dumps({'type': 'stage2_complete', 'data': stage2_results, 'metadata': {'algorithm': algo, 'label_to_model': label_to_model, 'aggregate_rankings': aggregate_rankings}})}\n\n"
+
+            metadata = {
+                "algorithm": algo,
+                "label_to_model": label_to_model,
+                "aggregate_rankings": aggregate_rankings,
+            }
 
             # Stage 3: Synthesize final answer
             yield f"data: {json.dumps({'type': 'stage3_start'})}\n\n"
             stage3_result = await stage3_synthesize_final(request.content, stage1_results, stage2_results)
-            yield f"data: {json.dumps({'type': 'stage3_complete', 'data': stage3_result})}\n\n"
+            yield f"data: {json.dumps({'type': 'stage3_complete', 'data': stage3_result, 'metadata': metadata})}\n\n"
 
             # Wait for title generation if it was started
             if title_task:
@@ -192,7 +200,8 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                 conversation_id,
                 stage1_results,
                 stage2_results,
-                stage3_result
+                stage3_result,
+                metadata,
             )
 
             # Send completion event
@@ -201,6 +210,9 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
         except Exception as e:
             # Send error event
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+        finally:
+            if token is not None:
+                reset_execution_algorithm(token)
 
     return StreamingResponse(
         event_generator(),
@@ -231,6 +243,32 @@ class SaveConfigRequest(BaseModel):
     rank_aggregation_method: str
 
 
+def _prepare_config_update(config_data: dict) -> dict:
+    """Preserve stored secrets when masked values are submitted."""
+    existing = get_config()
+    updated = dict(config_data)
+
+    if updated.get("openrouter_api_key") and "*" in updated["openrouter_api_key"]:
+        updated["openrouter_api_key"] = existing.get("openrouter_api_key")
+
+    if updated.get("azure_foundry_api_key") and "*" in updated["azure_foundry_api_key"]:
+        updated["azure_foundry_api_key"] = existing.get("azure_foundry_api_key")
+
+    if updated.get("azure_foundry_api_key_map"):
+        existing_map = existing.get("azure_foundry_api_key_map") or {}
+        for key, value in updated["azure_foundry_api_key_map"].items():
+            if value and "*" in value:
+                updated["azure_foundry_api_key_map"][key] = existing_map.get(key)
+
+    if updated.get("azure_foundry_algorithm_api_key_map"):
+        existing_map = existing.get("azure_foundry_algorithm_api_key_map") or {}
+        for key, value in updated["azure_foundry_algorithm_api_key_map"].items():
+            if value and "*" in value:
+                updated["azure_foundry_algorithm_api_key_map"][key] = existing_map.get(key)
+
+    return updated
+
+
 @app.get("/api/config")
 async def get_config_endpoint():
     """Return current configuration with API keys masked."""
@@ -240,42 +278,20 @@ async def get_config_endpoint():
 @app.post("/api/config")
 async def save_config_endpoint(request: SaveConfigRequest):
     """Save configuration. Preserves existing API keys if masked values are sent back."""
-    config_data = request.model_dump()
-
-    # Preserve existing API keys if the frontend sent back masked values
-    existing = get_config()
-
-    if config_data.get("openrouter_api_key") and "*" in config_data["openrouter_api_key"]:
-        config_data["openrouter_api_key"] = existing.get("openrouter_api_key")
-
-    if config_data.get("azure_foundry_api_key") and "*" in config_data["azure_foundry_api_key"]:
-        config_data["azure_foundry_api_key"] = existing.get("azure_foundry_api_key")
-
-    # Check values in azure_foundry_api_key_map
-    if config_data.get("azure_foundry_api_key_map"):
-        existing_map = existing.get("azure_foundry_api_key_map") or {}
-        for key, value in config_data["azure_foundry_api_key_map"].items():
-            if value and "*" in value:
-                config_data["azure_foundry_api_key_map"][key] = existing_map.get(key)
-
-    # Check values in azure_foundry_algorithm_api_key_map
-    if config_data.get("azure_foundry_algorithm_api_key_map"):
-        existing_map = existing.get("azure_foundry_algorithm_api_key_map") or {}
-        for key, value in config_data["azure_foundry_algorithm_api_key_map"].items():
-            if value and "*" in value:
-                config_data["azure_foundry_algorithm_api_key_map"][key] = existing_map.get(key)
-
+    config_data = _prepare_config_update(request.model_dump(exclude_none=True))
     save_config(config_data)
-    reload_config()
     return {"status": "ok", "message": "Configuration saved and reloaded"}
 
 
 @app.post("/api/config/test")
-async def test_config_endpoint():
+async def test_config_endpoint(request: SaveConfigRequest | None = None):
     """Test connectivity by pinging the first council model."""
     try:
         reload_config()
         config = get_config()
+        if request is not None:
+            config.update(_prepare_config_update(request.model_dump(exclude_none=True)))
+
         council_models = config.get("council_models", [])
         if not council_models:
             raise HTTPException(status_code=400, detail="No council models configured")
@@ -284,7 +300,8 @@ async def test_config_endpoint():
         result = await query_model(
             test_model,
             [{"role": "user", "content": "Say OK"}],
-            timeout=30.0
+            timeout=30.0,
+            config_override=config,
         )
 
         if result is None:

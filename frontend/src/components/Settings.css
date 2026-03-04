@@ -4,10 +4,22 @@
   padding: 32px;
 }
 
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
 .settings-title {
   font-size: 22px;
   color: #333;
-  margin: 0 0 24px 0;
+  margin: 0;
+}
+
+.settings-back-btn {
+  flex-shrink: 0;
 }
 
 .settings-section {
@@ -222,5 +234,20 @@
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@media (max-width: 720px) {
+  .settings-page {
+    padding: 20px;
+  }
+
+  .settings-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .settings-actions {
+    flex-direction: column;
   }
 }

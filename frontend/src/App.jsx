@@ -13,6 +13,24 @@ function App() {
   const [view, setView] = useState(window.location.hash === '#settings' ? 'settings' : 'chat');
   const [algorithm, setAlgorithm] = useState('peer_review');
 
+  async function loadConversations() {
+    try {
+      const convs = await api.listConversations();
+      setConversations(convs);
+    } catch (error) {
+      console.error('Failed to load conversations:', error);
+    }
+  }
+
+  async function loadConversation(id) {
+    try {
+      const conv = await api.getConversation(id);
+      setCurrentConversation(conv);
+    } catch (error) {
+      console.error('Failed to load conversation:', error);
+    }
+  }
+
   // Hash routing
   useEffect(() => {
     const onHash = () => setView(window.location.hash === '#settings' ? 'settings' : 'chat');
@@ -22,7 +40,9 @@ function App() {
 
   // Load conversations on mount
   useEffect(() => {
-    loadConversations();
+    queueMicrotask(() => {
+      void loadConversations();
+    });
   }, []);
 
   // Load default algorithm from config on mount
@@ -35,27 +55,11 @@ function App() {
   // Load conversation details when selected
   useEffect(() => {
     if (currentConversationId) {
-      loadConversation(currentConversationId);
+      queueMicrotask(() => {
+        void loadConversation(currentConversationId);
+      });
     }
   }, [currentConversationId]);
-
-  const loadConversations = async () => {
-    try {
-      const convs = await api.listConversations();
-      setConversations(convs);
-    } catch (error) {
-      console.error('Failed to load conversations:', error);
-    }
-  };
-
-  const loadConversation = async (id) => {
-    try {
-      const conv = await api.getConversation(id);
-      setCurrentConversation(conv);
-    } catch (error) {
-      console.error('Failed to load conversation:', error);
-    }
-  };
 
   const handleNewConversation = async () => {
     try {
@@ -71,6 +75,7 @@ function App() {
   };
 
   const handleSelectConversation = (id) => {
+    window.location.hash = '#chat';
     setCurrentConversationId(id);
   };
 
@@ -162,6 +167,9 @@ function App() {
               const messages = [...prev.messages];
               const lastMsg = messages[messages.length - 1];
               lastMsg.stage3 = event.data;
+              if (event.metadata) {
+                lastMsg.metadata = event.metadata;
+              }
               lastMsg.loading.stage3 = false;
               return { ...prev, messages };
             });
@@ -211,7 +219,7 @@ function App() {
         onOpenSettings={handleOpenSettings}
       />
       {view === 'settings' ? (
-        <Settings />
+        <Settings onBackToChat={handleBackToChat} />
       ) : (
         <ChatInterface
           conversation={currentConversation}
