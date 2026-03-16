@@ -15,7 +15,11 @@ export default function ChatInterface({
   onAlgorithmChange,
 }) {
   const [input, setInput] = useState('');
+  const [loadedFileName, setLoadedFileName] = useState('');
+  const [uploadError, setUploadError] = useState('');
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
   const messagesEndRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -30,6 +34,8 @@ export default function ChatInterface({
     if (input.trim() && !isLoading) {
       onSendMessage(input);
       setInput('');
+      setLoadedFileName('');
+      setUploadError('');
     }
   };
 
@@ -39,6 +45,71 @@ export default function ChatInterface({
       e.preventDefault();
       handleSubmit(e);
     }
+  };
+
+  const handlePickFile = () => {
+    fileInputRef.current?.click();
+  };
+
+  const readMarkdownFile = async (file) => {
+    const isMarkdownFile =
+      file.name.toLowerCase().endsWith('.md') ||
+      file.type === 'text/markdown' ||
+      file.type === 'text/x-markdown';
+
+    if (!isMarkdownFile) {
+      setUploadError('Only Markdown (.md) files are supported.');
+      return;
+    }
+
+    try {
+      const fileText = await file.text();
+      setInput((prev) => (prev.trim() ? `${prev}\n\n${fileText}` : fileText));
+      setLoadedFileName(file.name);
+      setUploadError('');
+    } catch {
+      setUploadError(`Could not read ${file.name}.`);
+    }
+  };
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    await readMarkdownFile(file);
+    e.target.value = '';
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    if (!isLoading) {
+      setIsDraggingFile(true);
+    }
+  };
+
+  const handleDragLeave = (e) => {
+    if (e.currentTarget.contains(e.relatedTarget)) {
+      return;
+    }
+    setIsDraggingFile(false);
+  };
+
+  const handleDrop = async (e) => {
+    e.preventDefault();
+    setIsDraggingFile(false);
+
+    if (isLoading) {
+      return;
+    }
+
+    const file = e.dataTransfer.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    await readMarkdownFile(file);
   };
 
   if (!conversation) {
@@ -142,15 +213,48 @@ export default function ChatInterface({
       <AlgorithmToolbar algorithm={algorithm} onChange={onAlgorithmChange} />
 
       <form className="input-form" onSubmit={handleSubmit}>
-        <textarea
-          className="message-input"
-          placeholder="Ask your question... (Shift+Enter for new line, Enter to send)"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          disabled={isLoading}
-          rows={3}
-        />
+        <div
+          className={`composer ${isDraggingFile ? 'drag-active' : ''}`}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          <div className="composer-toolbar">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".md,text/markdown"
+              className="file-input"
+              onChange={handleFileUpload}
+            />
+            <button
+              type="button"
+              className="upload-button"
+              onClick={handlePickFile}
+              disabled={isLoading}
+            >
+              Upload .md
+            </button>
+            {loadedFileName && (
+              <span className="file-status">Loaded: {loadedFileName}</span>
+            )}
+          </div>
+          {uploadError && (
+            <div className="upload-error">{uploadError}</div>
+          )}
+          {isDraggingFile && (
+            <div className="drop-hint">Drop your Markdown file here</div>
+          )}
+          <textarea
+            className="message-input"
+            placeholder="Ask your question or upload a Markdown file... (Shift+Enter for new line, Enter to send)"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            disabled={isLoading}
+            rows={3}
+          />
+        </div>
         <button
           type="submit"
           className="send-button"
