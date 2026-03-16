@@ -174,24 +174,6 @@
   margin-bottom: 12px;
 }
 
-.settings-note-list {
-  margin-top: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.settings-note-item {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.5;
-  color: #666;
-}
-
-.settings-note-item strong {
-  color: #333;
-}
-
 .route-row {
   display: grid;
   grid-template-columns: minmax(140px, 1fr) minmax(220px, 1.5fr) minmax(180px, 1fr) 32px;

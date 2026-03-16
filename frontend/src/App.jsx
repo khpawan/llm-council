@@ -79,6 +79,26 @@ function App() {
     setCurrentConversationId(id);
   };
 
+  const handleDeleteConversation = async (id, title) => {
+    const label = title || 'this conversation';
+    if (!window.confirm(`Delete "${label}"? This cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      await api.deleteConversation(id);
+      setConversations((prev) => prev.filter((conv) => conv.id !== id));
+
+      if (currentConversationId === id) {
+        setCurrentConversationId(null);
+        setCurrentConversation(null);
+      }
+    } catch (error) {
+      console.error('Failed to delete conversation:', error);
+      window.alert('Delete failed. If the backend was already running, restart it so the new DELETE route is available, then try again.');
+    }
+  };
+
   const handleSendMessage = async (content) => {
     if (!currentConversationId) return;
 
@@ -215,6 +235,7 @@ function App() {
         conversations={conversations}
         currentConversationId={currentConversationId}
         onSelectConversation={handleSelectConversation}
+        onDeleteConversation={handleDeleteConversation}
         onNewConversation={handleNewConversation}
         onOpenSettings={handleOpenSettings}
       />

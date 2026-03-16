@@ -547,13 +547,6 @@ export default function Settings({ onBackToChat }) {
           <p className="settings-hint settings-section-hint">
             {ALGORITHM_DESCRIPTIONS[algorithm]}
           </p>
-          <div className="settings-note-list">
-            {ALGORITHM_OPTIONS.map((option) => (
-              <p key={option.value} className="settings-note-item">
-                <strong>{option.label}:</strong> {ALGORITHM_DESCRIPTIONS[option.value]}
-              </p>
-            ))}
-          </div>
           <label className="settings-label">Ranking Aggregation</label>
           <select
             className="settings-select"
@@ -566,14 +559,6 @@ export default function Settings({ onBackToChat }) {
           <p className="settings-hint settings-section-hint">
             {RANKING_DESCRIPTIONS[rankingAggregation]}
           </p>
-          <div className="settings-note-list">
-            <p className="settings-note-item">
-              <strong>Average Rank:</strong> {RANKING_DESCRIPTIONS.average_rank}
-            </p>
-            <p className="settings-note-item">
-              <strong>Borda Count:</strong> {RANKING_DESCRIPTIONS.borda}
-            </p>
-          </div>
         </section>
 
         {/* Actions */}

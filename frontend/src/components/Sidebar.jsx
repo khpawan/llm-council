@@ -4,6 +4,7 @@ export default function Sidebar({
   conversations,
   currentConversationId,
   onSelectConversation,
+  onDeleteConversation,
   onNewConversation,
   onOpenSettings,
 }) {
@@ -33,12 +34,26 @@ export default function Sidebar({
               }`}
               onClick={() => onSelectConversation(conv.id)}
             >
-              <div className="conversation-title">
-                {conv.title || 'New Conversation'}
+              <div className="conversation-main">
+                <div className="conversation-title">
+                  {conv.title || 'New Conversation'}
+                </div>
+                <div className="conversation-meta">
+                  {conv.message_count} messages
+                </div>
               </div>
-              <div className="conversation-meta">
-                {conv.message_count} messages
-              </div>
+              <button
+                type="button"
+                className="delete-conversation-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDeleteConversation(conv.id, conv.title || 'New Conversation');
+                }}
+                title="Delete conversation"
+                aria-label={`Delete ${conv.title || 'New Conversation'}`}
+              >
+                &times;
+              </button>
             </div>
           ))
         )}
