@@ -134,20 +134,34 @@ Then open http://localhost:5173 in your browser.
 You can run the council from terminal and write markdown reports (great for blog draft review loops):
 
 ```bash
-uv run llm-council-cli --prompt "Review this draft for argument quality" --output data/council-runs/review.md
+uv run python -m backend.cli --prompt "Review this draft for argument quality" --output data/council-runs/review.md
 
 # Run on a markdown file and print final synthesis
-uv run llm-council-cli --input-file /path/to/draft.md --algorithm peer_review --print-final
+uv run python -m backend.cli --input-file /path/to/draft.md --algorithm peer_review --print-final
 ```
 
 Example for writing directly into your knowledge repo:
 
 ```bash
-uv run llm-council-cli \
+uv run python -m backend.cli \
   --input-file /Users/pawan/Documents/development/pawan-knowledge/blog/drafts/2026-02-agent-identity-crisis-x-article.md \
   --algorithm peer_review \
   --output /Users/pawan/Documents/development/pawan-knowledge/knowledge/ai-agents/council-review-agent-identity.md
 ```
+
+### Agent-friendly JSON mode
+
+If you want to call the council from another agent or tool, use `--json` so stdout stays machine-readable:
+
+```bash
+uv run python -m backend.cli --input-file /path/to/draft.md --algorithm peer_review --json
+```
+
+JSON mode behavior:
+- prints one structured JSON object to stdout
+- exits `0` on success and `1` when the council run fails
+- does not write a markdown file unless you also pass `--output`
+- sends transport/model errors to stderr so they do not corrupt the JSON payload
 
 
 ## Azure Foundry model recommendations + deployment steps
@@ -205,7 +219,7 @@ RANK_AGGREGATION_METHOD=average_rank
 ./start.sh
 
 # or one-shot CLI test
-uv run llm-council-cli --prompt "Sanity check this council setup" --print-final
+uv run python -m backend.cli --prompt "Sanity check this council setup" --print-final
 ```
 
 8. Verify panel behavior:
@@ -245,7 +259,7 @@ Ranking method recommendation:
 ### Example: run blog draft through council and write markdown
 
 ```bash
-uv run llm-council-cli   --input-file /Users/pawan/Documents/development/pawan-knowledge/blog/drafts/2026-02-agent-identity-crisis-x-article.md   --algorithm peer_review   --output /Users/pawan/Documents/development/pawan-knowledge/knowledge/ai-agents/council-review-agent-identity.md   --print-final
+uv run python -m backend.cli   --input-file /Users/pawan/Documents/development/pawan-knowledge/blog/drafts/2026-02-agent-identity-crisis-x-article.md   --algorithm peer_review   --output /Users/pawan/Documents/development/pawan-knowledge/knowledge/ai-agents/council-review-agent-identity.md   --print-final
 ```
 
 
@@ -290,19 +304,19 @@ This lets you keep most council models on one Foundry project while sending sele
 
 ```bash
 # 1) Peer review (default full council)
-uv run llm-council-cli --input-file /path/to/draft.md --algorithm peer_review --output data/council-runs/peer-review.md
+uv run python -m backend.cli --input-file /path/to/draft.md --algorithm peer_review --output data/council-runs/peer-review.md
 
 # 2) Red-team review (failure modes + exploitability)
-uv run llm-council-cli --input-file /path/to/draft.md --algorithm red_team --output data/council-runs/red-team.md
+uv run python -m backend.cli --input-file /path/to/draft.md --algorithm red_team --output data/council-runs/red-team.md
 
 # 3) Audience fit (exec vs security vs product/ops)
-uv run llm-council-cli --input-file /path/to/draft.md --algorithm audience_split --output data/council-runs/audience-split.md
+uv run python -m backend.cli --input-file /path/to/draft.md --algorithm audience_split --output data/council-runs/audience-split.md
 
 # 4) Claim-evidence pass (support strength and citation gaps)
-uv run llm-council-cli --input-file /path/to/draft.md --algorithm claim_evidence --output data/council-runs/claim-evidence.md
+uv run python -m backend.cli --input-file /path/to/draft.md --algorithm claim_evidence --output data/council-runs/claim-evidence.md
 
 # 5) Fast chairman-only iteration
-uv run llm-council-cli --input-file /path/to/draft.md --algorithm chairman_only --output data/council-runs/chairman-only.md
+uv run python -m backend.cli --input-file /path/to/draft.md --algorithm chairman_only --output data/council-runs/chairman-only.md
 ```
 
 
@@ -311,4 +325,3 @@ uv run llm-council-cli --input-file /path/to/draft.md --algorithm chairman_only 
 If you store JSON maps in `.env` (for example `AZURE_FOUNDRY_ENDPOINT_MAP`), avoid `source .env` directly in shell scripts because shell parsing can break JSON values.
 
 Prefer running commands directly (the app/CLI uses `python-dotenv`), or quote/escape JSON carefully when exporting env vars manually.
-

@@ -2,6 +2,7 @@
 
 from typing import List, Dict, Any, Optional
 import contextvars
+import sys
 import httpx
 
 from .config import get_config
@@ -124,7 +125,7 @@ async def query_model(
         }
 
     except Exception as e:
-        print(f"Error querying model {model} via {provider}: {e}")
+        print(f"Error querying model {model} via {provider}: {e}", file=sys.stderr)
         return None
 
 
