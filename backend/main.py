@@ -3,7 +3,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Dict, Any
 import uuid
 import json
@@ -11,6 +11,8 @@ import asyncio
 
 from . import storage
 from .council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings
+from .openrouter import set_execution_algorithm, reset_execution_algorithm, query_model
+from .config import get_config_masked, save_config, reload_config, get_config
 
 app = FastAPI(title="LLM Council API")
 
@@ -32,6 +34,7 @@ class CreateConversationRequest(BaseModel):
 class SendMessageRequest(BaseModel):
     """Request to send a message in a conversation."""
     content: str
+    algorithm: str | None = Field(default=None, description="peer_review|consensus_only|chairman_only|red_team|audience_split|claim_evidence")
 
 
 class ConversationMetadata(BaseModel):
@@ -79,6 +82,15 @@ async def get_conversation(conversation_id: str):
     return conversation
 
 
+@app.delete("/api/conversations/{conversation_id}")
+async def delete_conversation(conversation_id: str):
+    """Delete a conversation."""
+    deleted = storage.delete_conversation(conversation_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return {"status": "ok"}
+
+
 @app.post("/api/conversations/{conversation_id}/message")
 async def send_message(conversation_id: str, request: SendMessageRequest):
     """
@@ -103,7 +115,8 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
 
     # Run the 3-stage council process
     stage1_results, stage2_results, stage3_result, metadata = await run_full_council(
-        request.content
+        request.content,
+        algorithm=request.algorithm,
     )
 
     # Add assistant message with all stages
@@ -111,7 +124,8 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
         conversation_id,
         stage1_results,
         stage2_results,
-        stage3_result
+        stage3_result,
+        metadata,
     )
 
     # Return the complete response with metadata
@@ -138,9 +152,13 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
     is_first_message = len(conversation["messages"]) == 0
 
     async def event_generator():
+        token = None
         try:
             # Add user message
             storage.add_user_message(conversation_id, request.content)
+
+            algo = (request.algorithm or get_config().get("council_algorithm") or "peer_review").strip().lower()
+            token = set_execution_algorithm(algo)
 
             # Start title generation in parallel (don't await yet)
             title_task = None
@@ -149,19 +167,36 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
 
             # Stage 1: Collect responses
             yield f"data: {json.dumps({'type': 'stage1_start'})}\n\n"
-            stage1_results = await stage1_collect_responses(request.content)
+            if algo in ("chairman_only",):
+                stage1_results = []
+            else:
+                stage1_results = await stage1_collect_responses(request.content)
             yield f"data: {json.dumps({'type': 'stage1_complete', 'data': stage1_results})}\n\n"
 
-            # Stage 2: Collect rankings
-            yield f"data: {json.dumps({'type': 'stage2_start'})}\n\n"
-            stage2_results, label_to_model = await stage2_collect_rankings(request.content, stage1_results)
-            aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
-            yield f"data: {json.dumps({'type': 'stage2_complete', 'data': stage2_results, 'metadata': {'label_to_model': label_to_model, 'aggregate_rankings': aggregate_rankings}})}\n\n"
+            stage2_results = []
+            label_to_model = {}
+            aggregate_rankings = []
+
+            if algo not in ("chairman_only", "consensus_only"):
+                # Stage 2: Collect rankings
+                yield f"data: {json.dumps({'type': 'stage2_start'})}\n\n"
+                stage2_mode = "peer_review"
+                if algo in ("red_team", "audience_split", "claim_evidence"):
+                    stage2_mode = algo
+                stage2_results, label_to_model = await stage2_collect_rankings(request.content, stage1_results, mode=stage2_mode)
+                aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
+                yield f"data: {json.dumps({'type': 'stage2_complete', 'data': stage2_results, 'metadata': {'algorithm': algo, 'label_to_model': label_to_model, 'aggregate_rankings': aggregate_rankings}})}\n\n"
+
+            metadata = {
+                "algorithm": algo,
+                "label_to_model": label_to_model,
+                "aggregate_rankings": aggregate_rankings,
+            }
 
             # Stage 3: Synthesize final answer
             yield f"data: {json.dumps({'type': 'stage3_start'})}\n\n"
             stage3_result = await stage3_synthesize_final(request.content, stage1_results, stage2_results)
-            yield f"data: {json.dumps({'type': 'stage3_complete', 'data': stage3_result})}\n\n"
+            yield f"data: {json.dumps({'type': 'stage3_complete', 'data': stage3_result, 'metadata': metadata})}\n\n"
 
             # Wait for title generation if it was started
             if title_task:
@@ -174,7 +209,8 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                 conversation_id,
                 stage1_results,
                 stage2_results,
-                stage3_result
+                stage3_result,
+                metadata,
             )
 
             # Send completion event
@@ -183,6 +219,9 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
         except Exception as e:
             # Send error event
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+        finally:
+            if token is not None:
+                reset_execution_algorithm(token)
 
     return StreamingResponse(
         event_generator(),
@@ -192,6 +231,100 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
             "Connection": "keep-alive",
         }
     )
+
+
+class SaveConfigRequest(BaseModel):
+    """Request to save configuration."""
+    llm_provider: str
+    openrouter_api_key: str | None = None
+    openrouter_api_url: str | None = None
+    azure_foundry_endpoint: str | None = None
+    azure_foundry_api_key: str | None = None
+    azure_foundry_api_version: str | None = None
+    azure_foundry_deployment_map: dict | None = None
+    azure_foundry_endpoint_map: dict | None = None
+    azure_foundry_api_key_map: dict | None = None
+    azure_foundry_algorithm_endpoint_map: dict | None = None
+    azure_foundry_algorithm_api_key_map: dict | None = None
+    council_models: list[str]
+    chairman_model: str
+    council_algorithm: str
+    rank_aggregation_method: str
+
+
+def _prepare_config_update(config_data: dict) -> dict:
+    """Preserve stored secrets when masked values are submitted."""
+    existing = get_config()
+    updated = dict(config_data)
+
+    if updated.get("openrouter_api_key") and "*" in updated["openrouter_api_key"]:
+        updated["openrouter_api_key"] = existing.get("openrouter_api_key")
+
+    if updated.get("azure_foundry_api_key") and "*" in updated["azure_foundry_api_key"]:
+        updated["azure_foundry_api_key"] = existing.get("azure_foundry_api_key")
+
+    if updated.get("azure_foundry_api_key_map"):
+        existing_map = existing.get("azure_foundry_api_key_map") or {}
+        for key, value in updated["azure_foundry_api_key_map"].items():
+            if value and "*" in value:
+                updated["azure_foundry_api_key_map"][key] = existing_map.get(key)
+
+    if updated.get("azure_foundry_algorithm_api_key_map"):
+        existing_map = existing.get("azure_foundry_algorithm_api_key_map") or {}
+        for key, value in updated["azure_foundry_algorithm_api_key_map"].items():
+            if value and "*" in value:
+                updated["azure_foundry_algorithm_api_key_map"][key] = existing_map.get(key)
+
+    return updated
+
+
+@app.get("/api/config")
+async def get_config_endpoint():
+    """Return current configuration with API keys masked."""
+    return get_config_masked()
+
+
+@app.post("/api/config")
+async def save_config_endpoint(request: SaveConfigRequest):
+    """Save configuration. Preserves existing API keys if masked values are sent back."""
+    config_data = _prepare_config_update(request.model_dump(exclude_none=True))
+    save_config(config_data)
+    return {"status": "ok", "message": "Configuration saved and reloaded"}
+
+
+@app.post("/api/config/test")
+async def test_config_endpoint(request: SaveConfigRequest | None = None):
+    """Test connectivity by pinging the first council model."""
+    try:
+        reload_config()
+        config = get_config()
+        if request is not None:
+            config.update(_prepare_config_update(request.model_dump(exclude_none=True)))
+
+        council_models = config.get("council_models", [])
+        if not council_models:
+            raise HTTPException(status_code=400, detail="No council models configured")
+
+        test_model = council_models[0]
+        result = await query_model(
+            test_model,
+            [{"role": "user", "content": "Say OK"}],
+            timeout=30.0,
+            config_override=config,
+        )
+
+        if result is None:
+            return {"status": "error", "message": f"Failed to get response from {test_model}"}
+
+        return {
+            "status": "ok",
+            "model": test_model,
+            "response": result.get("content", "")[:200]
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 
 if __name__ == "__main__":

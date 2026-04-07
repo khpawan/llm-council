@@ -1,3 +1,13 @@
+## Why this exists
+
+Most council-style demos stop at multi-model brainstorming. This project focuses on practical review workflows for real teams:
+
+- **Enterprise model routing** across Azure Foundry projects/regions
+- **Pre-publish hardening modes** (`red_team`, `audience_split`, `claim_evidence`)
+- **Operational output** via CLI markdown reports that can be committed/reviewed
+
+The goal is not just better generation, but better decision quality and safer publication workflows.
+
 # LLM Council
 
 ![llmcouncil](header.jpg)
@@ -57,6 +67,38 @@ COUNCIL_MODELS = [
 CHAIRMAN_MODEL = "google/gemini-3-pro-preview"
 ```
 
+
+### 4. Provider Configuration (OpenRouter or Azure Foundry)
+
+By default the app uses OpenRouter. To use Azure Foundry/Azure OpenAI-compatible chat completions, set:
+
+```bash
+LLM_PROVIDER=azure_foundry
+AZURE_FOUNDRY_ENDPOINT=https://<your-resource>.openai.azure.com
+AZURE_FOUNDRY_API_KEY=<key>
+AZURE_FOUNDRY_API_VERSION=2024-10-21
+
+# Use deployment names in COUNCIL_MODELS / CHAIRMAN_MODEL, or map aliases:
+AZURE_FOUNDRY_DEPLOYMENT_MAP={"council-1":"gpt-4.1","council-2":"gpt-4.1-mini","chairman":"gpt-4.1"}
+```
+
+### 5. Algorithm Configuration
+
+Council flow is configurable via `COUNCIL_ALGORITHM`:
+
+- `peer_review` (default): Stage1 + Stage2 + Stage3
+- `consensus_only`: Stage1 + Stage3
+- `chairman_only`: direct chairman response
+- `red_team`: Stage2 focuses on failure modes, exploitability, and risk ranking
+- `audience_split`: Stage2 scores each answer for executive/security/product audiences
+- `claim_evidence`: Stage2 grades claim support strength and evidence gaps
+
+Optional ranking aggregation method for metadata:
+
+```bash
+RANK_AGGREGATION_METHOD=average_rank   # or borda
+```
+
 ## Running the Application
 
 **Option 1: Use the start script**
@@ -85,3 +127,201 @@ Then open http://localhost:5173 in your browser.
 - **Frontend:** React + Vite, react-markdown for rendering
 - **Storage:** JSON files in `data/conversations/`
 - **Package Management:** uv for Python, npm for JavaScript
+
+
+## CLI Mode (Markdown outputs)
+
+You can run the council from terminal and write markdown reports (great for blog draft review loops):
+
+```bash
+uv run python -m backend.cli --prompt "Review this draft for argument quality" --output data/council-runs/review.md
+
+# Run on a markdown file and print final synthesis
+uv run python -m backend.cli --input-file /path/to/draft.md --algorithm peer_review --print-final
+```
+
+Example for writing directly into your knowledge repo:
+
+```bash
+uv run python -m backend.cli \
+  --input-file /Users/pawan/Documents/development/pawan-knowledge/blog/drafts/2026-02-agent-identity-crisis-x-article.md \
+  --algorithm peer_review \
+  --output /Users/pawan/Documents/development/pawan-knowledge/knowledge/ai-agents/council-review-agent-identity.md
+```
+
+### Agent-friendly JSON mode
+
+If you want to call the council from another agent or tool, use `--json` so stdout stays machine-readable:
+
+```bash
+uv run python -m backend.cli --input-file /path/to/draft.md --algorithm peer_review --json
+```
+
+JSON mode behavior:
+- prints one structured JSON object to stdout
+- exits `0` on success and `1` when the council run fails
+- does not write a markdown file unless you also pass `--output`
+- sends transport/model errors to stderr so they do not corrupt the JSON payload
+
+
+## Azure Foundry model recommendations + deployment steps
+
+If you want high-quality council outputs, use a **mixed panel** and keep your strongest model as chairman.
+
+### Recommended deployment pattern
+
+- **Chairman (best reasoning):** your strongest Foundry chat model deployment
+- **Council member #1 (strong general):** same strong model or next-best model
+- **Council member #2 (cost/speed balance):** a smaller/faster model
+- **Council member #3 (diversity):** a different model family if available
+
+A practical starter mix:
+- `foundry-chair` → strongest reasoning model available in your Foundry tenant
+- `foundry-1` → same as chairman (or second strongest)
+- `foundry-2` → strong balanced model (mid-tier)
+- `foundry-3` → fast model for diversity/latency
+
+> Tip: Do not run all members on the exact same deployment. Diversity improves council value.
+
+### Step-by-step: deploy models in Azure Foundry
+
+1. Open **Azure AI Foundry** for your project/resource.
+2. Go to **Models** (or **Model catalog**), select each model you want.
+3. Click **Deploy** and create deployments with clear names, for example:
+   - `foundry-chair`
+   - `foundry-1`
+   - `foundry-2`
+   - `foundry-3`
+4. Ensure deployments are for **chat completions** and are in a region/quota that can handle parallel calls.
+5. Copy your endpoint + key from the resource:
+   - `AZURE_FOUNDRY_ENDPOINT` (example: `https://<resource>.openai.azure.com`)
+   - `AZURE_FOUNDRY_API_KEY`
+6. Add these to your `.env` in this repo:
+
+```bash
+LLM_PROVIDER=azure_foundry
+AZURE_FOUNDRY_ENDPOINT=https://<your-resource>.openai.azure.com
+AZURE_FOUNDRY_API_KEY=<your-key>
+AZURE_FOUNDRY_API_VERSION=2024-10-21
+
+COUNCIL_MODELS=foundry-1,foundry-2,foundry-3
+CHAIRMAN_MODEL=foundry-chair
+AZURE_FOUNDRY_DEPLOYMENT_MAP={"foundry-1":"foundry-1","foundry-2":"foundry-2","foundry-3":"foundry-3","foundry-chair":"foundry-chair"}
+
+COUNCIL_ALGORITHM=peer_review
+RANK_AGGREGATION_METHOD=average_rank
+```
+
+7. Start app and test:
+
+```bash
+# backend + frontend
+./start.sh
+
+# or one-shot CLI test
+uv run python -m backend.cli --prompt "Sanity check this council setup" --print-final
+```
+
+8. Verify panel behavior:
+   - Stage 1 contains responses from all 3 council members
+   - Stage 2 rankings are present
+   - Stage 3 model equals your chairman deployment
+
+
+### Recommended algorithm defaults
+
+Use this routing policy for day-to-day work:
+
+- **Draft ideation / fast loops:** `chairman_only`
+  - Fastest turnaround, good for early shaping.
+- **Mid-stage quality pass:** `consensus_only`
+  - Multi-model signal with lower latency/cost.
+- **Pre-publish or high-stakes review:** `peer_review`
+  - Full Stage1 + Stage2 + Stage3 quality process.
+
+Suggested progression for writing workflows:
+1. Run `chairman_only` for first iterations.
+2. Run `consensus_only` once structure is stable.
+3. Run `peer_review` before finalization.
+
+Ranking method recommendation:
+- Start with `RANK_AGGREGATION_METHOD=average_rank` (easiest to interpret)
+- Use `borda` when reviewer rankings are noisy and you want stronger consensus signal.
+
+### Throughput and cost guidance
+
+- Start with `COUNCIL_MODELS=3` members and `peer_review`.
+- If latency/cost is high, switch to:
+  - `COUNCIL_ALGORITHM=consensus_only` (skips Stage 2)
+  - or use a faster model for one council seat.
+- Use `chairman_only` for quick drafts, then `peer_review` for final quality passes.
+
+### Example: run blog draft through council and write markdown
+
+```bash
+uv run python -m backend.cli   --input-file /Users/pawan/Documents/development/pawan-knowledge/blog/drafts/2026-02-agent-identity-crisis-x-article.md   --algorithm peer_review   --output /Users/pawan/Documents/development/pawan-knowledge/knowledge/ai-agents/council-review-agent-identity.md   --print-final
+```
+
+
+
+### Suggested workflow patterns by task
+
+- **Early ideation:** `chairman_only`
+- **Draft shaping:** `consensus_only`
+- **Pre-publish quality:** `peer_review`
+- **Security hardening pass:** `red_team`
+- **Exec communication pass:** `audience_split`
+- **Credibility/citation pass:** `claim_evidence`
+
+
+### Multi-endpoint Azure Foundry routing (model-level and algorithm-level)
+
+You can route different models (or whole algorithms) to different Foundry project endpoints/regions.
+
+#### Model-level routing (recommended)
+
+```bash
+AZURE_FOUNDRY_ENDPOINT_MAP={"gpt-5.2":"https://pawan-projgpt-resource.services.ai.azure.com/api/projects/pawan-projgpt"}
+AZURE_FOUNDRY_API_KEY_MAP={"gpt-5.2":"<key-for-gpt52-project>"}
+```
+
+#### Algorithm-level routing
+
+```bash
+AZURE_FOUNDRY_ALGORITHM_ENDPOINT_MAP={"red_team":"https://pawan-projgpt-resource.services.ai.azure.com/api/projects/pawan-projgpt"}
+AZURE_FOUNDRY_ALGORITHM_API_KEY_MAP={"red_team":"<key-for-gpt52-project>"}
+```
+
+Routing precedence in Azure mode:
+1. model-level endpoint/key map
+2. algorithm-level endpoint/key map
+3. global `AZURE_FOUNDRY_ENDPOINT` + `AZURE_FOUNDRY_API_KEY`
+
+This lets you keep most council models on one Foundry project while sending selected models/algorithms (for example GPT-5.2 red-team runs) to a different region/project.
+
+
+### Algorithm examples
+
+```bash
+# 1) Peer review (default full council)
+uv run python -m backend.cli --input-file /path/to/draft.md --algorithm peer_review --output data/council-runs/peer-review.md
+
+# 2) Red-team review (failure modes + exploitability)
+uv run python -m backend.cli --input-file /path/to/draft.md --algorithm red_team --output data/council-runs/red-team.md
+
+# 3) Audience fit (exec vs security vs product/ops)
+uv run python -m backend.cli --input-file /path/to/draft.md --algorithm audience_split --output data/council-runs/audience-split.md
+
+# 4) Claim-evidence pass (support strength and citation gaps)
+uv run python -m backend.cli --input-file /path/to/draft.md --algorithm claim_evidence --output data/council-runs/claim-evidence.md
+
+# 5) Fast chairman-only iteration
+uv run python -m backend.cli --input-file /path/to/draft.md --algorithm chairman_only --output data/council-runs/chairman-only.md
+```
+
+
+### Known issue: sourcing `.env` in shell
+
+If you store JSON maps in `.env` (for example `AZURE_FOUNDRY_ENDPOINT_MAP`), avoid `source .env` directly in shell scripts because shell parsing can break JSON values.
+
+Prefer running commands directly (the app/CLI uses `python-dotenv`), or quote/escape JSON carefully when exporting env vars manually.

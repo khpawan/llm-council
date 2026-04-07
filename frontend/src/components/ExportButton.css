@@ -1,0 +1,19 @@
+.export-button {
+  background: none;
+  border: 1px solid #d0d0d0;
+  color: #666;
+  padding: 4px 10px;
+  border-radius: 5px;
+  font-size: 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.export-button:hover {
+  background: #f0f7ff;
+  border-color: #4a90e2;
+  color: #4a90e2;
+}

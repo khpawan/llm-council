@@ -109,6 +109,72 @@
   background: #fafafa;
 }
 
+.composer {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  margin: -8px;
+  border-radius: 12px;
+  transition: background 0.2s, box-shadow 0.2s;
+}
+
+.composer.drag-active {
+  background: #edf5ff;
+  box-shadow: inset 0 0 0 2px #94bbe8;
+}
+
+.composer-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.file-input {
+  display: none;
+}
+
+.upload-button {
+  padding: 8px 12px;
+  border: 1px solid #c7d7ec;
+  background: #ffffff;
+  color: #356a9f;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+
+.upload-button:hover:not(:disabled) {
+  background: #eef5fd;
+  border-color: #94bbe8;
+  color: #24527f;
+}
+
+.upload-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.file-status {
+  font-size: 13px;
+  color: #5a6a79;
+}
+
+.upload-error {
+  font-size: 13px;
+  color: #c13f3f;
+}
+
+.drop-hint {
+  font-size: 13px;
+  color: #356a9f;
+  font-weight: 600;
+}
+
 .message-input {
   flex: 1;
   padding: 14px;
@@ -160,4 +226,15 @@
   cursor: not-allowed;
   background: #ccc;
   border-color: #ccc;
+}
+
+@media (max-width: 720px) {
+  .input-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .send-button {
+    width: 100%;
+  }
 }

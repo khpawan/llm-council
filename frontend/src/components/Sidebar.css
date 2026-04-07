@@ -18,8 +18,14 @@
   color: #333;
 }
 
+.sidebar-header-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .new-conversation-btn {
-  width: 100%;
+  flex: 1;
   padding: 10px;
   background: #4a90e2;
   border: 1px solid #4a90e2;
@@ -55,6 +61,10 @@
   border-radius: 6px;
   cursor: pointer;
   transition: background 0.2s;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .conversation-item:hover {
@@ -75,4 +85,42 @@
 .conversation-meta {
   color: #999;
   font-size: 12px;
+}
+
+.conversation-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.delete-conversation-btn {
+  border: 0;
+  background: transparent;
+  color: #b0b0b0;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.delete-conversation-btn:hover {
+  background: #ffeaea;
+  color: #d04444;
+}
+
+.settings-btn {
+  background: none;
+  border: 1px solid #d0d0d0;
+  color: #888;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 16px;
+}
+
+.settings-btn:hover {
+  background: #f0f7ff;
+  border-color: #4a90e2;
+  color: #4a90e2;
 }

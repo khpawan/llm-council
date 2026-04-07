@@ -107,6 +107,24 @@ def list_conversations() -> List[Dict[str, Any]]:
     return conversations
 
 
+def delete_conversation(conversation_id: str) -> bool:
+    """
+    Delete a conversation from storage.
+
+    Args:
+        conversation_id: Conversation identifier
+
+    Returns:
+        True if deleted, False if not found
+    """
+    path = get_conversation_path(conversation_id)
+    if not os.path.exists(path):
+        return False
+
+    os.remove(path)
+    return True
+
+
 def add_user_message(conversation_id: str, content: str):
     """
     Add a user message to a conversation.
@@ -131,7 +149,8 @@ def add_assistant_message(
     conversation_id: str,
     stage1: List[Dict[str, Any]],
     stage2: List[Dict[str, Any]],
-    stage3: Dict[str, Any]
+    stage3: Dict[str, Any],
+    metadata: Optional[Dict[str, Any]] = None,
 ):
     """
     Add an assistant message with all 3 stages to a conversation.
@@ -150,7 +169,8 @@ def add_assistant_message(
         "role": "assistant",
         "stage1": stage1,
         "stage2": stage2,
-        "stage3": stage3
+        "stage3": stage3,
+        "metadata": metadata or {},
     })
 
     save_conversation(conversation)

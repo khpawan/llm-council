@@ -3,15 +3,23 @@ import ReactMarkdown from 'react-markdown';
 import Stage1 from './Stage1';
 import Stage2 from './Stage2';
 import Stage3 from './Stage3';
+import AlgorithmToolbar from './AlgorithmToolbar';
+import ExportButton from './ExportButton';
 import './ChatInterface.css';
 
 export default function ChatInterface({
   conversation,
   onSendMessage,
   isLoading,
+  algorithm,
+  onAlgorithmChange,
 }) {
   const [input, setInput] = useState('');
+  const [loadedFileName, setLoadedFileName] = useState('');
+  const [uploadError, setUploadError] = useState('');
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
   const messagesEndRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -26,6 +34,8 @@ export default function ChatInterface({
     if (input.trim() && !isLoading) {
       onSendMessage(input);
       setInput('');
+      setLoadedFileName('');
+      setUploadError('');
     }
   };
 
@@ -35,6 +45,71 @@ export default function ChatInterface({
       e.preventDefault();
       handleSubmit(e);
     }
+  };
+
+  const handlePickFile = () => {
+    fileInputRef.current?.click();
+  };
+
+  const readMarkdownFile = async (file) => {
+    const isMarkdownFile =
+      file.name.toLowerCase().endsWith('.md') ||
+      file.type === 'text/markdown' ||
+      file.type === 'text/x-markdown';
+
+    if (!isMarkdownFile) {
+      setUploadError('Only Markdown (.md) files are supported.');
+      return;
+    }
+
+    try {
+      const fileText = await file.text();
+      setInput((prev) => (prev.trim() ? `${prev}\n\n${fileText}` : fileText));
+      setLoadedFileName(file.name);
+      setUploadError('');
+    } catch {
+      setUploadError(`Could not read ${file.name}.`);
+    }
+  };
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    await readMarkdownFile(file);
+    e.target.value = '';
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    if (!isLoading) {
+      setIsDraggingFile(true);
+    }
+  };
+
+  const handleDragLeave = (e) => {
+    if (e.currentTarget.contains(e.relatedTarget)) {
+      return;
+    }
+    setIsDraggingFile(false);
+  };
+
+  const handleDrop = async (e) => {
+    e.preventDefault();
+    setIsDraggingFile(false);
+
+    if (isLoading) {
+      return;
+    }
+
+    const file = e.dataTransfer.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    await readMarkdownFile(file);
   };
 
   if (!conversation) {
@@ -47,6 +122,16 @@ export default function ChatInterface({
       </div>
     );
   }
+
+  // Helper to find the user query preceding an assistant message
+  const getQueryForIndex = (index) => {
+    for (let i = index - 1; i >= 0; i--) {
+      if (conversation.messages[i].role === 'user') {
+        return conversation.messages[i].content;
+      }
+    }
+    return '';
+  };
 
   return (
     <div className="chat-interface">
@@ -70,13 +155,18 @@ export default function ChatInterface({
                 </div>
               ) : (
                 <div className="assistant-message">
-                  <div className="message-label">LLM Council</div>
+                  <div className="message-label">
+                    LLM Council
+                    {msg.stage3 && (
+                      <ExportButton message={msg} query={getQueryForIndex(index)} />
+                    )}
+                  </div>
 
                   {/* Stage 1 */}
                   {msg.loading?.stage1 && (
                     <div className="stage-loading">
                       <div className="spinner"></div>
-                      <span>Running Stage 1: Collecting individual responses...</span>
+                      <span>Stage 1: Collecting responses from council models...</span>
                     </div>
                   )}
                   {msg.stage1 && <Stage1 responses={msg.stage1} />}
@@ -85,7 +175,7 @@ export default function ChatInterface({
                   {msg.loading?.stage2 && (
                     <div className="stage-loading">
                       <div className="spinner"></div>
-                      <span>Running Stage 2: Peer rankings...</span>
+                      <span>Stage 2: Peer review in progress...</span>
                     </div>
                   )}
                   {msg.stage2 && (
@@ -100,7 +190,7 @@ export default function ChatInterface({
                   {msg.loading?.stage3 && (
                     <div className="stage-loading">
                       <div className="spinner"></div>
-                      <span>Running Stage 3: Final synthesis...</span>
+                      <span>Stage 3: Synthesizing final answer...</span>
                     </div>
                   )}
                   {msg.stage3 && <Stage3 finalResponse={msg.stage3} />}
@@ -120,26 +210,59 @@ export default function ChatInterface({
         <div ref={messagesEndRef} />
       </div>
 
-      {conversation.messages.length === 0 && (
-        <form className="input-form" onSubmit={handleSubmit}>
+      <AlgorithmToolbar algorithm={algorithm} onChange={onAlgorithmChange} />
+
+      <form className="input-form" onSubmit={handleSubmit}>
+        <div
+          className={`composer ${isDraggingFile ? 'drag-active' : ''}`}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          <div className="composer-toolbar">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".md,text/markdown"
+              className="file-input"
+              onChange={handleFileUpload}
+            />
+            <button
+              type="button"
+              className="upload-button"
+              onClick={handlePickFile}
+              disabled={isLoading}
+            >
+              Upload .md
+            </button>
+            {loadedFileName && (
+              <span className="file-status">Loaded: {loadedFileName}</span>
+            )}
+          </div>
+          {uploadError && (
+            <div className="upload-error">{uploadError}</div>
+          )}
+          {isDraggingFile && (
+            <div className="drop-hint">Drop your Markdown file here</div>
+          )}
           <textarea
             className="message-input"
-            placeholder="Ask your question... (Shift+Enter for new line, Enter to send)"
+            placeholder="Ask your question or upload a Markdown file... (Shift+Enter for new line, Enter to send)"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             disabled={isLoading}
             rows={3}
           />
-          <button
-            type="submit"
-            className="send-button"
-            disabled={!input.trim() || isLoading}
-          >
-            Send
-          </button>
-        </form>
-      )}
+        </div>
+        <button
+          type="submit"
+          className="send-button"
+          disabled={!input.trim() || isLoading}
+        >
+          Send
+        </button>
+      </form>
     </div>
   );
 }

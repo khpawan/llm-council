@@ -11,3 +11,7 @@ dependencies = [
     "httpx>=0.27.0",
     "pydantic>=2.9.0",
 ]
+
+
+[project.scripts]
+llm-council-cli = "backend.cli:main"

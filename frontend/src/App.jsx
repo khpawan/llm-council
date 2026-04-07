@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import ChatInterface from './components/ChatInterface';
+import Settings from './components/Settings';
 import { api } from './api';
 import './App.css';
 
@@ -9,36 +10,56 @@ function App() {
   const [currentConversationId, setCurrentConversationId] = useState(null);
   const [currentConversation, setCurrentConversation] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [view, setView] = useState(window.location.hash === '#settings' ? 'settings' : 'chat');
+  const [algorithm, setAlgorithm] = useState('peer_review');
 
-  // Load conversations on mount
-  useEffect(() => {
-    loadConversations();
-  }, []);
-
-  // Load conversation details when selected
-  useEffect(() => {
-    if (currentConversationId) {
-      loadConversation(currentConversationId);
-    }
-  }, [currentConversationId]);
-
-  const loadConversations = async () => {
+  async function loadConversations() {
     try {
       const convs = await api.listConversations();
       setConversations(convs);
     } catch (error) {
       console.error('Failed to load conversations:', error);
     }
-  };
+  }
 
-  const loadConversation = async (id) => {
+  async function loadConversation(id) {
     try {
       const conv = await api.getConversation(id);
       setCurrentConversation(conv);
     } catch (error) {
       console.error('Failed to load conversation:', error);
     }
-  };
+  }
+
+  // Hash routing
+  useEffect(() => {
+    const onHash = () => setView(window.location.hash === '#settings' ? 'settings' : 'chat');
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+
+  // Load conversations on mount
+  useEffect(() => {
+    queueMicrotask(() => {
+      void loadConversations();
+    });
+  }, []);
+
+  // Load default algorithm from config on mount
+  useEffect(() => {
+    api.getConfig().then(cfg => {
+      if (cfg.council_algorithm) setAlgorithm(cfg.council_algorithm);
+    }).catch(() => {});
+  }, []);
+
+  // Load conversation details when selected
+  useEffect(() => {
+    if (currentConversationId) {
+      queueMicrotask(() => {
+        void loadConversation(currentConversationId);
+      });
+    }
+  }, [currentConversationId]);
 
   const handleNewConversation = async () => {
     try {
@@ -54,7 +75,28 @@ function App() {
   };
 
   const handleSelectConversation = (id) => {
+    window.location.hash = '#chat';
     setCurrentConversationId(id);
+  };
+
+  const handleDeleteConversation = async (id, title) => {
+    const label = title || 'this conversation';
+    if (!window.confirm(`Delete "${label}"? This cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      await api.deleteConversation(id);
+      setConversations((prev) => prev.filter((conv) => conv.id !== id));
+
+      if (currentConversationId === id) {
+        setCurrentConversationId(null);
+        setCurrentConversation(null);
+      }
+    } catch (error) {
+      console.error('Failed to delete conversation:', error);
+      window.alert('Delete failed. If the backend was already running, restart it so the new DELETE route is available, then try again.');
+    }
   };
 
   const handleSendMessage = async (content) => {
@@ -145,6 +187,9 @@ function App() {
               const messages = [...prev.messages];
               const lastMsg = messages[messages.length - 1];
               lastMsg.stage3 = event.data;
+              if (event.metadata) {
+                lastMsg.metadata = event.metadata;
+              }
               lastMsg.loading.stage3 = false;
               return { ...prev, messages };
             });
@@ -169,7 +214,7 @@ function App() {
           default:
             console.log('Unknown event type:', eventType);
         }
-      });
+      }, algorithm);
     } catch (error) {
       console.error('Failed to send message:', error);
       // Remove optimistic messages on error
@@ -181,19 +226,30 @@ function App() {
     }
   };
 
+  const handleOpenSettings = () => { window.location.hash = '#settings'; };
+  const handleBackToChat = () => { window.location.hash = '#chat'; };
+
   return (
     <div className="app">
       <Sidebar
         conversations={conversations}
         currentConversationId={currentConversationId}
         onSelectConversation={handleSelectConversation}
+        onDeleteConversation={handleDeleteConversation}
         onNewConversation={handleNewConversation}
+        onOpenSettings={handleOpenSettings}
       />
-      <ChatInterface
-        conversation={currentConversation}
-        onSendMessage={handleSendMessage}
-        isLoading={isLoading}
-      />
+      {view === 'settings' ? (
+        <Settings onBackToChat={handleBackToChat} />
+      ) : (
+        <ChatInterface
+          conversation={currentConversation}
+          onSendMessage={handleSendMessage}
+          isLoading={isLoading}
+          algorithm={algorithm}
+          onAlgorithmChange={setAlgorithm}
+        />
+      )}
     </div>
   );
 }

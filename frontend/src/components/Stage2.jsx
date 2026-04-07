@@ -21,6 +21,8 @@ export default function Stage2({ rankings, labelToModel, aggregateRankings }) {
     return null;
   }
 
+  const usesBorda = aggregateRankings?.some((agg) => typeof agg.borda_points === 'number');
+
   return (
     <div className="stage stage2">
       <h3 className="stage-title">Stage 2: Peer Rankings</h3>
@@ -74,7 +76,9 @@ export default function Stage2({ rankings, labelToModel, aggregateRankings }) {
         <div className="aggregate-rankings">
           <h4>Aggregate Rankings (Street Cred)</h4>
           <p className="stage-description">
-            Combined results across all peer evaluations (lower score is better):
+            {usesBorda
+              ? 'Combined results across all peer evaluations (higher Borda score is better):'
+              : 'Combined results across all peer evaluations (lower score is better):'}
           </p>
           <div className="aggregate-list">
             {aggregateRankings.map((agg, index) => (
@@ -84,7 +88,9 @@ export default function Stage2({ rankings, labelToModel, aggregateRankings }) {
                   {agg.model.split('/')[1] || agg.model}
                 </span>
                 <span className="rank-score">
-                  Avg: {agg.average_rank.toFixed(2)}
+                  {typeof agg.average_rank === 'number'
+                    ? `Avg: ${agg.average_rank.toFixed(2)}`
+                    : `Borda: ${agg.borda_points}`}
                 </span>
                 <span className="rank-count">
                   ({agg.rankings_count} votes)
